@@ -78,7 +78,7 @@ impl VersionTracker {
         
         // Generate a unique action ID
         let action_id = format!("{}-{}-{}", 
-            file_path.replace('/', "_").replace('.', "_"),
+            file_path.replace(['/', '.'], "_"),
             next_version,
             chrono::Utc::now().timestamp()
         );

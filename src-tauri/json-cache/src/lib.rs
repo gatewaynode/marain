@@ -1,13 +1,13 @@
 pub mod error;
 
 use chrono::{DateTime, Utc};
-use error::{JsonCacheError, Result};
+use error::Result;
 use redb::{Database, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 // Define the table for storing cached JSON content
 const CACHE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("json_cache");
@@ -161,14 +161,15 @@ impl JsonCache {
         debug!("Deleting from cache: key={}", key);
         
         let write_txn = self.db.begin_write()?;
-        let mut deleted = false;
-        {
+        let deleted = {
             let mut cache_table = write_txn.open_table(CACHE_TABLE)?;
-            deleted = cache_table.remove(key)?.is_some();
+            let was_deleted = cache_table.remove(key)?.is_some();
             
             let mut metadata_table = write_txn.open_table(METADATA_TABLE)?;
             metadata_table.remove(key)?;
-        }
+            
+            was_deleted
+        };
         write_txn.commit()?;
         
         if deleted {

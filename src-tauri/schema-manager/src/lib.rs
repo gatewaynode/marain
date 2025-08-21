@@ -16,12 +16,16 @@ use serde_yaml::Value;
 use entities::{Entity, SchemaLoader};
 
 // Global configuration definitions loaded from config files - similar to entity definitions
-pub static CONFIGURATION_DEFINITIONS: Lazy<RwLock<Vec<Arc<Box<dyn Configuration>>>>> = Lazy::new(|| {
+// Type alias for complex configuration type
+pub type ConfigurationList = Vec<Arc<Box<dyn Configuration>>>;
+pub type EntityList = Vec<Arc<Box<dyn Entity>>>;
+
+pub static CONFIGURATION_DEFINITIONS: Lazy<RwLock<ConfigurationList>> = Lazy::new(|| {
     RwLock::new(Vec::new())
 });
 
 // Global entity definitions loaded from schemas - stores Arc-wrapped entities for sharing
-pub static ENTITY_DEFINITIONS: Lazy<RwLock<Vec<Arc<Box<dyn Entity>>>>> = Lazy::new(|| {
+pub static ENTITY_DEFINITIONS: Lazy<RwLock<EntityList>> = Lazy::new(|| {
     RwLock::new(Vec::new())
 });
 
@@ -79,8 +83,8 @@ pub async fn load_configurations() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     
-    let configs: Vec<Arc<Box<dyn Configuration>>> = loaded_configs.into_iter()
-        .map(|c| Arc::new(c))
+    let configs: ConfigurationList = loaded_configs.into_iter()
+        .map(Arc::new)
         .collect();
     info!("Loaded {} configuration modules", configs.len());
     
@@ -122,7 +126,7 @@ pub fn get_configuration(id: &str) -> Option<Arc<Box<dyn Configuration>>> {
 }
 
 /// Get all configurations
-pub fn get_all_configurations() -> Vec<Arc<Box<dyn Configuration>>> {
+pub fn get_all_configurations() -> ConfigurationList {
     CONFIGURATION_DEFINITIONS.read().unwrap().clone()
 }
 
@@ -216,8 +220,8 @@ pub async fn load_schemas() -> Result<(), Box<dyn std::error::Error>> {
     
     // Load entities using SchemaLoader and wrap in Arc for sharing
     let loaded_entities = SchemaLoader::load_entities_from_directory(&schemas_path).await?;
-    let entities: Vec<Arc<Box<dyn Entity>>> = loaded_entities.into_iter()
-        .map(|e| Arc::new(e))
+    let entities: EntityList = loaded_entities.into_iter()
+        .map(Arc::new)
         .collect();
     info!("Loaded {} entity schemas", entities.len());
     
@@ -296,13 +300,13 @@ pub(crate) async fn reload_schemas() {
 }
 
 /// Get a clone of the current entity definitions
-pub fn get_entity_definitions() -> Vec<Arc<Box<dyn Entity>>> {
+pub fn get_entity_definitions() -> EntityList {
     ENTITY_DEFINITIONS.read().unwrap().clone()
 }
 
 /// Get entity definitions for database initialization
 /// This provides the loaded entities to the database module
-pub fn get_entities_for_database() -> Vec<Arc<Box<dyn Entity>>> {
+pub fn get_entities_for_database() -> EntityList {
     let entities = ENTITY_DEFINITIONS.read().unwrap();
     entities.clone()
 }

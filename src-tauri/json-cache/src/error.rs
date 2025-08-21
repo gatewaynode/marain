@@ -3,22 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum JsonCacheError {
     #[error("ReDB error: {0}")]
-    ReDB(#[from] redb::Error),
-    
-    #[error("Database error: {0}")]
-    Database(#[from] redb::DatabaseError),
-    
-    #[error("Transaction error: {0}")]
-    Transaction(#[from] redb::TransactionError),
-    
-    #[error("Storage error: {0}")]
-    Storage(#[from] redb::StorageError),
-    
-    #[error("Commit error: {0}")]
-    Commit(#[from] redb::CommitError),
-    
-    #[error("Table error: {0}")]
-    Table(#[from] redb::TableError),
+    ReDB(String),
     
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -37,6 +22,43 @@ pub enum JsonCacheError {
     
     #[error("Cache operation failed: {0}")]
     OperationFailed(String),
+}
+
+// Manual conversion implementations for ReDB errors
+impl From<redb::Error> for JsonCacheError {
+    fn from(err: redb::Error) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
+}
+
+impl From<redb::DatabaseError> for JsonCacheError {
+    fn from(err: redb::DatabaseError) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
+}
+
+impl From<redb::TransactionError> for JsonCacheError {
+    fn from(err: redb::TransactionError) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
+}
+
+impl From<redb::StorageError> for JsonCacheError {
+    fn from(err: redb::StorageError) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
+}
+
+impl From<redb::CommitError> for JsonCacheError {
+    fn from(err: redb::CommitError) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
+}
+
+impl From<redb::TableError> for JsonCacheError {
+    fn from(err: redb::TableError) -> Self {
+        JsonCacheError::ReDB(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, JsonCacheError>;

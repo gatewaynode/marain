@@ -1,15 +1,11 @@
 use axum::{
-    extract::State,
-    http::StatusCode,
     middleware,
-    response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
+    Router,
 };
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::{error, info, warn};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -19,8 +15,6 @@ pub mod middleware_hooks;
 pub mod models;
 pub mod server;
 pub mod test_data;
-
-use error::ApiError;
 
 // Re-export server functions for convenience
 pub use server::{start_server, start_server_with_config, spawn_server, spawn_server_with_config, ApiConfig};

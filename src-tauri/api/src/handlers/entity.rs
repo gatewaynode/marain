@@ -4,16 +4,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use chrono::Utc;
 use serde_json::json;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{error, info, warn};
 
 use crate::{
     error::{ApiError, ApiResult},
     models::{
         CreateEntityRequest, DeleteResponse, EntityListResponse, EntityResponse,
-        FilterParams, PaginationParams, UpdateEntityRequest,
+        PaginationParams, UpdateEntityRequest,
     },
     AppState,
 };

@@ -145,12 +145,12 @@ impl ActionGenerator {
                 });
                 
                 // Generate index actions for the new entity
-                if let Some(fields) = entity_map.get(&Value::String("fields".to_string())) {
+                if let Some(fields) = entity_map.get(Value::String("fields".to_string())) {
                     if let Some(fields_seq) = fields.as_sequence() {
                         for field in fields_seq {
                             if let Some(field_map) = field.as_mapping() {
-                                if let Some(field_id) = field_map.get(&Value::String("id".to_string())) {
-                                    if let Some(field_type) = field_map.get(&Value::String("type".to_string())) {
+                                if let Some(field_id) = field_map.get(Value::String("id".to_string())) {
+                                    if let Some(field_type) = field_map.get(Value::String("type".to_string())) {
                                         if field_type == &Value::String("slug".to_string()) {
                                             let index_name = format!("idx_{}_{}", entity_id, field_id.as_str().unwrap_or(""));
                                             let sql = format!(
@@ -176,7 +176,7 @@ impl ActionGenerator {
         }
         
         // Handle removed entities
-        for (entity_id, _) in &diff.removed {
+        for entity_id in diff.removed.keys() {
             actions.push(Action::DropTable {
                 entity_id: entity_id.clone(),
                 table_name: format!("content_{}", entity_id),
@@ -191,7 +191,7 @@ impl ActionGenerator {
             if let Some(field_changes) = changes.get("fields") {
                 if let Some(field_diff) = field_changes.as_mapping() {
                     // Handle added fields
-                    if let Some(added_fields) = field_diff.get(&Value::String("added".to_string())) {
+                    if let Some(added_fields) = field_diff.get(Value::String("added".to_string())) {
                         if let Some(fields_map) = added_fields.as_mapping() {
                             for (field_id, field_def) in fields_map {
                                 if let Some(field_id_str) = field_id.as_str() {
@@ -208,7 +208,7 @@ impl ActionGenerator {
                     }
                     
                     // Handle removed fields
-                    if let Some(removed_fields) = field_diff.get(&Value::String("removed".to_string())) {
+                    if let Some(removed_fields) = field_diff.get(Value::String("removed".to_string())) {
                         if let Some(fields_map) = removed_fields.as_mapping() {
                             for (field_id, _) in fields_map {
                                 if let Some(field_id_str) = field_id.as_str() {
@@ -256,7 +256,7 @@ impl ActionGenerator {
         }
         
         // Handle removed configuration keys
-        for (key, _) in &diff.removed {
+        for key in diff.removed.keys() {
             actions.push(Action::UpdateConfig {
                 key: key.clone(),
                 value: Value::Null,
@@ -287,26 +287,26 @@ impl ActionGenerator {
         ];
         
         // Add columns for fields
-        if let Some(fields) = entity_def.get(&Value::String("fields".to_string())) {
+        if let Some(fields) = entity_def.get(Value::String("fields".to_string())) {
             if let Some(fields_seq) = fields.as_sequence() {
                 for field in fields_seq {
                     if let Some(field_map) = field.as_mapping() {
-                        let field_id = field_map.get(&Value::String("id".to_string()))
+                        let field_id = field_map.get(Value::String("id".to_string()))
                             .and_then(|v| v.as_str())
                             .ok_or("Field missing 'id'")?;
                         
-                        let field_type = field_map.get(&Value::String("type".to_string()))
+                        let field_type = field_map.get(Value::String("type".to_string()))
                             .and_then(|v| v.as_str())
                             .ok_or("Field missing 'type'")?;
                         
-                        let cardinality = field_map.get(&Value::String("cardinality".to_string()))
+                        let cardinality = field_map.get(Value::String("cardinality".to_string()))
                             .and_then(|v| v.as_i64())
                             .unwrap_or(1);
                         
                         // Only add column for single-value fields
                         if cardinality == 1 {
                             let sql_type = Self::field_type_to_sql(field_type);
-                            let required = field_map.get(&Value::String("required".to_string()))
+                            let required = field_map.get(Value::String("required".to_string()))
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false);
                             
@@ -335,12 +335,12 @@ impl ActionGenerator {
     /// Generate SQL for adding a column to a table
     fn generate_add_column_sql(table_name: &str, field_id: &str, field_def: &Value) -> Result<String, String> {
         if let Some(field_map) = field_def.as_mapping() {
-            let field_type = field_map.get(&Value::String("type".to_string()))
+            let field_type = field_map.get(Value::String("type".to_string()))
                 .and_then(|v| v.as_str())
                 .ok_or("Field missing 'type'")?;
             
             let sql_type = Self::field_type_to_sql(field_type);
-            let required = field_map.get(&Value::String("required".to_string()))
+            let required = field_map.get(Value::String("required".to_string()))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             

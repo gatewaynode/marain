@@ -2,7 +2,7 @@ mod logging;
 
 use schema_manager::{get_configuration, config_access};
 use database::{Database, DatabaseConfig, initialize_database};
-use json_cache::{JsonCache, CacheManager};
+use json_cache::CacheManager;
 use std::sync::Arc;
 use std::path::PathBuf;
 use tauri::State;
@@ -37,8 +37,8 @@ impl EnvPaths {
         
         // Convert relative paths to absolute paths based on project root
         let resolve_path = |path: &str| -> PathBuf {
-            if path.starts_with("./") {
-                project_root.join(&path[2..])
+            if let Some(stripped) = path.strip_prefix("./") {
+                project_root.join(stripped)
             } else if path.starts_with('/') {
                 PathBuf::from(path)
             } else {

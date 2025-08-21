@@ -5,7 +5,7 @@ use axum::{
     response::Response,
     body::Body,
 };
-use tracing::{info, warn, debug};
+use tracing::{info, debug};
 use std::time::Instant;
 
 use crate::AppState;

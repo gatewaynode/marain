@@ -134,7 +134,7 @@ impl ActionExecutor {
                         }
                         
                         // Try to rollback executed actions
-                        let rollback_result = self.rollback_actions(executed_actions).await;
+                        let _rollback_result = self.rollback_actions(executed_actions).await;
                         
                         return Ok(ExecutionReport {
                             total_actions,

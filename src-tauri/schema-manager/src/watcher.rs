@@ -83,7 +83,7 @@ fn handle_file_event(event: Event) {
 /// Handle schema file changes
 fn handle_schema_change(path: &Path) {
     use crate::action_generator::{ActionGenerator, FileType};
-    use crate::diff_engine::{DiffEngine, ConfigDiff};
+    use crate::diff_engine::DiffEngine;
     
     // Load the new schema
     let new_content = match std::fs::read_to_string(path) {

@@ -110,7 +110,7 @@ impl DiffEngine {
             }
             (Value::Mapping(a), Value::Mapping(b)) => {
                 a.len() == b.len() && a.iter().all(|(k, v)| {
-                    b.get(k).map_or(false, |v2| Self::values_equal(v, v2))
+                    b.get(k).is_some_and(|v2| Self::values_equal(v, v2))
                 })
             }
             _ => false,
@@ -157,8 +157,8 @@ impl DiffEngine {
         // Categorize modifications
         for (path, change_record) in &diff.modified {
             if let Some(mapping) = change_record.as_mapping() {
-                let old_value = mapping.get(&Value::String("old".to_string()));
-                let new_value = mapping.get(&Value::String("new".to_string()));
+                let old_value = mapping.get(Value::String("old".to_string()));
+                let new_value = mapping.get(Value::String("new".to_string()));
                 
                 let category = Self::categorize_modification(path, old_value, new_value);
                 changes.push(Change {
@@ -177,9 +177,9 @@ impl DiffEngine {
     /// Categorize an addition based on its impact
     fn categorize_addition(path: &str, _value: &Value) -> ChangeCategory {
         // Adding new fields is generally safe
-        if path.contains("fields") && !path.contains("required") {
-            ChangeCategory::Safe
-        } else if path.contains("description") || path.contains("label") {
+        if (path.contains("fields") && !path.contains("required"))
+            || path.contains("description")
+            || path.contains("label") {
             ChangeCategory::Safe
         } else {
             ChangeCategory::Warning
@@ -189,15 +189,9 @@ impl DiffEngine {
     /// Categorize a removal based on its impact
     fn categorize_removal(path: &str, value: &Value) -> ChangeCategory {
         // Removing fields is breaking
-        if path.contains("fields") {
-            ChangeCategory::Breaking
-        }
-        // Removing required fields is definitely breaking
-        else if path.contains("required") && value.as_bool() == Some(true) {
-            ChangeCategory::Breaking
-        }
-        // Removing entities is breaking
-        else if !path.contains('.') {
+        if path.contains("fields")
+            || (path.contains("required") && value.as_bool() == Some(true))
+            || !path.contains('.') {
             ChangeCategory::Breaking
         } else {
             ChangeCategory::Warning
@@ -214,11 +208,8 @@ impl DiffEngine {
         }
         
         // Field type changes are breaking
-        if path.contains("type") && path.contains("fields") {
-            ChangeCategory::Breaking
-        }
-        // Cardinality changes are breaking
-        else if path.contains("cardinality") {
+        if (path.contains("type") && path.contains("fields"))
+            || path.contains("cardinality") {
             ChangeCategory::Breaking
         }
         // Making a field required is breaking for existing data
@@ -281,6 +272,12 @@ impl ConfigDiff {
     /// Count total number of changes
     pub fn change_count(&self) -> usize {
         self.added.len() + self.removed.len() + self.modified.len()
+    }
+}
+
+impl Default for ConfigDiff {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -4,7 +4,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use thiserror::Error;
 
 /// API Error types
