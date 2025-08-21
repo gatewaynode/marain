@@ -1,0 +1,58 @@
+# System Configuration for Production Environment
+id: system
+name: System Configuration
+description: Core system configuration for Marain CMS
+provider: core
+version: 1.0.0
+values:
+  # Application settings
+  app:
+    name: "MarainCMS"
+    environment: "prd"
+    debug: false
+    
+  # Logging configuration
+  logging:
+    level: "warn"
+    format: "json"
+    file: "./data/logs/marain_cms.log"
+    
+  # Database configuration
+  database:
+    default: "postgres"
+    connections:
+      sqlite:
+        driver: "sqlite3"
+        file: "./data/app.sqlite"
+        timeout: 5000
+        pragmas:
+          foreign_keys: true
+          journal_mode: "wal"
+      postgres:
+        driver: "postgresql"
+        host: "db.prod.example.com"
+        port: 5432
+        database: "app_db"
+        username: "app_user"
+        sslmode: "require"
+        pool:
+          min: 1
+          max: 10
+          timeout: 30000
+        password:
+          source: "aws"
+          secret_id: "prod/db/postgres/password"
+          providers:
+            aws:
+              service: "secretsmanager"
+              region: "us-east-1"
+            gcp:
+              project_id: "my-gcp-project"
+              secret_name: "postgres-password"
+              version: "latest"
+            azure:
+              vault_name: "my-azure-vault"
+              secret_name: "postgres-password"
+            cloudflare:
+              account_id: "1234567890abcdef"
+              secret_name: "postgres-password"

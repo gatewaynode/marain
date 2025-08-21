@@ -1,0 +1,55 @@
+id: all_fields
+name: All Fields
+description: A short piece of text
+versioned: true
+recursive: true
+cacheable: true
+fields:
+  - id: title
+    type: text
+    required: true
+    label: Title
+    description: A brief handle
+  - id: splash
+    type: rich_text
+    required: false
+    label: Splash
+    description: The only real piece of content
+  - id: body
+    type: long_text
+    required: false
+    label: Body
+    description: The only real piece of content
+  - id: count
+    type: integer
+    required: false
+    label: Count
+    description: Just a number
+  - id: float
+    type: float
+    required: false
+    label: Float
+    description: Just a float
+  - id: bool
+    type: boolean
+    required: false
+    label: Boolean
+    description: Just a bool
+  - id: sluggo
+    type: slug
+    required: false
+    label: Sluggo
+    description: Just a float
+  - id: author
+    type: entity_reference
+    target_entity: user
+    label: Author
+    description: The author of the article
+  - id: published_at
+    type: datetime
+    label: Published Date
+    description: When the article was published
+  - id: status
+    type: text
+    label: Status
+    description: Publication status (draft, published, archived)

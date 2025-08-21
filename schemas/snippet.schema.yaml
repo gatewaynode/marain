@@ -1,0 +1,30 @@
+id: snippet
+name: Snippet
+description: A short piece of text
+versioned: true
+recursive: false
+cacheable: true
+fields:
+  - id: title
+    type: text
+    required: true
+    label: Title
+    description: A brief handle
+  - id: body
+    type: text
+    required: true
+    label: Body
+    description: The only real piece of content
+  - id: author
+    type: entity_reference
+    target_entity: user
+    label: Author
+    description: The author of the article
+  - id: published_at
+    type: datetime
+    label: Published Date
+    description: When the article was published
+  - id: status
+    type: text
+    label: Status
+    description: Publication status (draft, published, archived)

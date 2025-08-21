@@ -1,0 +1,43 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Vite
+.vite/
+.svelte-kit/
+
+# Production
+/build
+/dist
+
+# Misc
+.env
+.env.*
+!.env.example
+!EXAMPLE.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Data
+data/*
+!data/.gitkeep
+!data/content/.gitkeep
+!data/json-cache/.gitkeep
+!data/user-backend/.gitkeep
+!data/worker-queue/.gitkeep
+# Test databases should not be committed
+data/test_databases/*.db
+
+# IMPORTANT: Never put logs in src-tauri subdirectories
+# This prevents hot-reload loops
+src-tauri/app/data/logs/
+src-tauri/*/data/logs/
+
+# IDE's and such
+.vscode
+.vscode/*

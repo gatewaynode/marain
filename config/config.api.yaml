@@ -1,0 +1,58 @@
+# API Module Configuration
+# This demonstrates the new trait-based configuration system
+id: api
+name: API Configuration
+description: Configuration for the REST API module
+provider: api
+version: 1.0.0
+values:
+  # Server settings
+  host: "0.0.0.0"
+  port: 3030
+  # Test hot-reload - added new field
+  max_connections: 1000
+  
+  # CORS settings
+  cors:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:1420"
+      - "tauri://localhost"
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    allowed_headers:
+      - Content-Type
+      - Authorization
+  
+  # Rate limiting
+  rate_limit:
+    enabled: false
+    requests_per_minute: 60
+    burst_size: 10
+  
+  # API documentation
+  swagger:
+    enabled: true
+    path: "/api/v1/swagger"
+    title: "Marain CMS API"
+    version: "1.0.0"
+  
+  # Middleware settings
+  middleware:
+    authentication:
+      enabled: false
+      type: "passthrough"
+    request_logging:
+      enabled: true
+      level: "info"
+    response_logging:
+      enabled: true
+      include_body: false
+  
+  # Test endpoints (development only)
+  test_endpoints:
+    enabled: true
+    path_prefix: "/api/v1/test"

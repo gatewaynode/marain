@@ -1,0 +1,118 @@
+Yes, it's possible to have dynamic payload examples in Swagger UI based on a URL path parameter, but it requires custom implementation because it's not a standard feature of the OpenAPI Specification.
+
+The OpenAPI specification is declarative, meaning you define a static structure for your API, including examples. Swagger UI simply renders that static definition. To introduce dynamic behavior, you need to extend Swagger UI's functionality with custom code.
+
+-----
+
+## The Standard Approach (and Its Limitation)
+
+By default, in the OpenAPI 3.0 specification, you can provide multiple, named examples for a request body.
+
+For example, in your `openapi.yaml` or `openapi.json`:
+
+```yaml
+paths:
+  /users/{userType}:
+    post:
+      summary: Creates a new user
+      parameters:
+        - name: userType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [admin, standard]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+            examples:
+              adminExample:
+                summary: An example for an admin user
+                value:
+                  username: "admin_user"
+                  email: "admin@example.com"
+                  role: "admin"
+                  permissions: ["read", "write", "delete"]
+              standardUserExample:
+                summary: An example for a standard user
+                value:
+                  username: "standard_user"
+                  email: "user@example.com"
+                  role: "standard"
+                  permissions: ["read"]
+```
+
+In Swagger UI, this configuration will render a dropdown menu in the request body section, allowing the user to **manually select** either `adminExample` or `standardUserExample`. The UI will not automatically switch the example when the user types `admin` into the `userType` path parameter.
+
+-----
+
+## Solution: Custom Swagger UI Plugin
+
+The most effective way to achieve this dynamic behavior is to create a **Swagger UI plugin**. A plugin allows you to inject custom JavaScript to modify the UI's behavior.
+
+The plugin would perform these steps:
+
+1.  **Identify** the input field for the path parameter (e.g., `userType`).
+2.  **Listen** for changes to the value in that input field.
+3.  When the value changes, **find** the corresponding example you want to display.
+4.  **Programmatically update** the request body example shown in the UI.
+
+### Example Plugin Logic (Conceptual)
+
+Here is a simplified JavaScript example illustrating the logic you would use within a Swagger UI plugin.
+
+```javascript
+// This is pseudocode for a Swagger UI plugin
+const DynamicExamplesPlugin = (system) => {
+  return {
+    wrapComponents: {
+      // Target the "parameters" component
+      parameters: (Original, { React }) => (props) => {
+        // Find the specific path parameter we care about
+        const userTypeParam = props.parameters.find(p => p.get('name') === 'userType');
+
+        if (userTypeParam) {
+          // Keep track of the original onChange function
+          const originalOnChange = props.onChange;
+          
+          // Create a new onChange function
+          props.onChange = (param, value, isCommand) => {
+            // Call the original function to maintain default behavior
+            originalOnChange(param, value, isCommand);
+
+            // Our custom logic: if the userType param changes...
+            if (param.get('name') === 'userType') {
+              // Get the new value (e.g., 'admin' or 'standard')
+              const newUserType = value;
+              
+              // Select the correct example name based on the input value
+              const exampleToSelect = newUserType === 'admin' 
+                ? 'adminExample' 
+                : 'standardUserExample';
+              
+              // Use Swagger UI's internal actions to change the selected example
+              system.specActions.changeRequestExample(
+                props.path,         // API path (e.g., '/users/{userType}')
+                props.method,       // HTTP method (e.g., 'post')
+                'application/json', // Media type
+                exampleToSelect     // The name of the example to show
+              );
+            }
+          };
+        }
+        
+        // Render the original component with our modified props
+        return <Original {...props} />;
+      },
+    },
+  };
+};
+```
+
+### Summary & Recommendation 👍
+
+While the OpenAPI specification itself doesn't support dynamically linking parameter inputs to examples, you can absolutely achieve this functionality by extending Swagger UI.
+
+The **recommended and most robust solution is to build a custom Swagger UI plugin**. This gives you full control over the UI's behavior to create an interactive and intuitive experience for your API consumers.

@@ -1,0 +1,91 @@
+# Content Module Configuration
+# Example of how modules can provide their own configurations
+id: content
+name: Content Module Configuration
+description: Configuration for the content management module
+provider: content_module
+version: 1.0.0
+values:
+  # Content settings
+  default_status: "draft"
+  auto_save:
+    enabled: true
+    interval_seconds: 30
+  
+  # Revision settings
+  revisions:
+    enabled: true
+    max_revisions_per_entity: 100
+    auto_cleanup:
+      enabled: true
+      keep_days: 90
+  
+  # Media handling
+  media:
+    upload_path: "./data/uploads"
+    max_file_size_mb: 50
+    allowed_extensions:
+      - jpg
+      - jpeg
+      - png
+      - gif
+      - pdf
+      - doc
+      - docx
+    image_processing:
+      enabled: true
+      thumbnail_sizes:
+        - width: 150
+          height: 150
+          name: "thumbnail"
+        - width: 300
+          height: 300
+          name: "small"
+        - width: 800
+          height: 600
+          name: "medium"
+        - width: 1920
+          height: 1080
+          name: "large"
+  
+  # Search settings
+  search:
+    enabled: true
+    index_path: "./data/search_index"
+    min_word_length: 3
+    stop_words:
+      - "the"
+      - "and"
+      - "or"
+      - "but"
+      - "in"
+      - "on"
+      - "at"
+      - "to"
+      - "for"
+  
+  # Cache settings
+  cache:
+    enabled: true
+    ttl_seconds: 3600
+    max_entries: 1000
+    storage_type: "memory"  # or "redis", "file"
+  
+  # Workflow settings
+  workflow:
+    enabled: false
+    states:
+      - draft
+      - review
+      - published
+      - archived
+    transitions:
+      - from: draft
+        to: review
+        permission: "content.submit_for_review"
+      - from: review
+        to: published
+        permission: "content.publish"
+      - from: published
+        to: archived
+        permission: "content.archive"

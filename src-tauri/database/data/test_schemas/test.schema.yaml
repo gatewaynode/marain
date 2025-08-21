@@ -1,0 +1,12 @@
+
+id: test_entity
+name: Test Entity
+description: A test entity
+fields:
+  - id: title
+    type: text
+    label: Title
+    required: true
+  - id: count
+    type: integer
+    label: Count

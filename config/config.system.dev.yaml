@@ -1,0 +1,30 @@
+# System Configuration for Development Environment
+id: system
+name: System Configuration
+description: Core system configuration for Marain CMS
+provider: core
+version: 1.0.0
+values:
+  # Application settings
+  app:
+    name: "MarainCMS"
+    environment: "dev"
+    debug: true
+    
+  # Logging configuration
+  logging:
+    level: "info"
+    format: "json"
+    file: "./data/logs/marain_cms.log"
+    
+  # Database configuration
+  database:
+    default: "sqlite"
+    connections:
+      sqlite:
+        driver: "sqlite3"
+        file: "content/marain.db"  # Relative to DATA_PATH
+        timeout: 5000
+        pragmas:
+          foreign_keys: true
+          journal_mode: "wal"
