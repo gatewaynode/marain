@@ -1,0 +1,106 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run every Monday at 9am UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  update-rust-dependencies:
+    name: Update Rust Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+      
+      - name: Update workspace dependencies
+        working-directory: ./src-tauri
+        run: |
+          cargo upgrade --workspace --incompatible
+          cargo update
+      
+      - name: Test after updates
+        working-directory: ./src-tauri
+        run: cargo test --all
+      
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update Rust dependencies'
+          title: 'chore: update Rust dependencies'
+          body: |
+            ## Automated Dependency Update
+            
+            This PR updates Rust dependencies to their latest versions.
+            
+            Please review the changes and ensure all tests pass before merging.
+          branch: update-rust-dependencies
+          delete-branch: true
+
+  update-frontend-dependencies:
+    name: Update Frontend Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: Update dependencies
+        run: |
+          bun update --latest
+          bun install
+      
+      - name: Run type checking
+        run: bun run check
+      
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update frontend dependencies'
+          title: 'chore: update frontend dependencies'
+          body: |
+            ## Automated Dependency Update
+            
+            This PR updates frontend dependencies to their latest versions.
+            
+            Please review the changes and ensure all tests pass before merging.
+          branch: update-frontend-dependencies
+          delete-branch: true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Run security audit
+        working-directory: ./src-tauri
+        run: cargo audit
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: Install frontend dependencies
+        run: bun install
+      
+      - name: Audit frontend dependencies
+        run: bun audit
