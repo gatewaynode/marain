@@ -12,6 +12,8 @@
 
 # Production
 /build
+/build/*
+!/build/.gitkeep
 /dist
 
 # Misc

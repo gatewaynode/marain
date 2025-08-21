@@ -1,7 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 
 /// Response for a single entity
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

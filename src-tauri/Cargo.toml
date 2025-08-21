@@ -5,7 +5,7 @@ members = [
     "database",
     "api",
     "entities",
-    "fields",
+    "fields", "json-cache",
 ]
 resolver = "2"
 

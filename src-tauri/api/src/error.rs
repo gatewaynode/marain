@@ -4,7 +4,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use thiserror::Error;
 
 /// API Error types
@@ -12,28 +11,28 @@ use thiserror::Error;
 pub enum ApiError {
     #[error("Entity not found: {0}")]
     EntityNotFound(String),
-    
+
     #[error("Invalid entity type: {0}")]
     InvalidEntityType(String),
-    
+
     #[error("Database error: {0}")]
     DatabaseError(String),
-    
+
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
+
     #[error("Unauthorized")]
     Unauthorized,
-    
+
     #[error("Forbidden")]
     Forbidden,
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Internal server error: {0}")]
     InternalError(String),
-    
+
     #[error("Not implemented")]
     NotImplemented,
 }
@@ -67,7 +66,7 @@ impl ApiError {
             ApiError::NotImplemented => StatusCode::NOT_IMPLEMENTED,
         }
     }
-    
+
     /// Get error code for the error type
     pub fn error_code(&self) -> &str {
         match self {
@@ -94,7 +93,7 @@ impl IntoResponse for ApiError {
                 details: None,
             },
         };
-        
+
         (status, Json(error_response)).into_response()
     }
 }

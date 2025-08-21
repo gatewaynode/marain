@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 use chrono::Utc;
 use tracing::info;
 
@@ -13,7 +9,7 @@ use crate::{
 };
 
 /// Health check endpoint
-/// 
+///
 /// GET /api/v1/health
 #[utoipa::path(
     get,
@@ -26,7 +22,7 @@ use crate::{
 )]
 pub async fn health_check(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     info!("Health check requested");
-    
+
     // Check database connectivity
     let db_health = match sqlx::query("SELECT 1")
         .fetch_one(&state.db.get_pool())
@@ -41,7 +37,7 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<impl IntoR
             message: format!("Database connection failed: {}", e),
         },
     };
-    
+
     let response = HealthResponse {
         status: if db_health.connected {
             "healthy".to_string()
@@ -52,6 +48,6 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<impl IntoR
         timestamp: Utc::now(),
         database: db_health,
     };
-    
+
     Ok(Json(response))
 }

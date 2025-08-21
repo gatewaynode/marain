@@ -28,3 +28,13 @@ values:
         pragmas:
           foreign_keys: true
           journal_mode: "wal"
+  
+  # JSON Cache configuration (ReDB)
+  json_cache:
+    enabled: true
+    file: "json-cache/marain_json_cache.db"  # Relative to DATA_PATH
+    default_ttl: 86400  # 24 hours in seconds
+    max_size_mb: 100  # Maximum cache size in MB
+    eviction_policy: "lru"  # Least Recently Used
+    auto_evict_expired: true  # Automatically remove expired entries
+    eviction_interval: 3600  # Check for expired entries every hour (seconds)

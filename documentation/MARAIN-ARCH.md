@@ -32,16 +32,19 @@ graph TB
     subgraph "Storage"
         SQLITE[(SQLite)]
         POSTGRES[(PostgreSQL)]
+        CACHE[(ReDB K/V Cache)]
     end
     
     UI --> TAURI
     TAURI --> API
+    API --> CACHE
     API --> HOOKS
     HOOKS --> MOD1
     HOOKS --> MOD2
     HOOKS --> MOD3
     HOOKS --> MODN
     API --> DB
+    CACHE --> DB
     DB --> SQLITE
     DB --> POSTGRES
     
@@ -83,13 +86,14 @@ The Marain core is written in Rust it can operate independently of the frontend,
 *   `src/lib`: Contains the common javascript library functions
 *   `src/modules`: Contains the Svelte 5 modules
 *   `src-tauri/`: Contains the Rust-based core application logic, structured as a Cargo workspace for modularity. This organization helps LLM agents navigate and extend the backend efficiently.
-    *   `Cargo.toml`: Defines the workspace members (e.g., `app`, `api`, `database`, `entities`, `fields`, `schema-manager`).
+    *   `Cargo.toml`: Defines the workspace members (e.g., `app`, `api`, `database`, `entities`, `fields`, `schema-manager`, `json-cache`).
     *   `app/`: The main Tauri application crate and entry point.
     *   `api/`: Crate for API endpoints and middleware, defined by `openapi.yaml`.
     *   `database/`: Crate for database connections, storage operations, and data persistence.
     *   `entities/`: Standalone crate for entity definitions, schema loading, and entity-related business logic.
     *   `fields/`: Standalone crate for field type definitions, validation, and field-related utilities.
     *   `schema-manager/`: Crate for monitoring configuration and schema changes with automatic reloading.
+    *   `json-cache/`: Crate for high-performance K/V caching using ReDB.
     *   `modules/`: Contains all functional modules, each as a separate crate.
         *   `{module_name}/`
             *   `Cargo.toml`
@@ -109,25 +113,31 @@ The Marain core is written in Rust it can operate independently of the frontend,
     *   Contains module name, version, and activation status.
     *   Managed by users and committed to version control.
 *   `data/`: Contains runtime data files.
-    *   `marain.db`: SQLite database file (when using SQLite).
-    *   Future database files and data storage.
+    *   `content/marain.db`: SQLite database file (when using SQLite).
+    *   `json-cache/marain_json_cache.db`: ReDB cache database for fast entity retrieval.
+    *   `logs/`: Application log files.
+    *   `work-queue/`: Future work queue storage.
+    *   `user-backend/`: Future user backend storage.
 *   `tests/`: Contains Playwright end-to-end tests.
     *   `e2e/`: End-to-end tests for the admin UI.
 *   `openapi.yaml`: The OpenAPI 3.0 specification for the system API.
 
 ## Request Lifecycle Flow Diagram (API)
 
-The API is built using the [Axum](https://github.com/tokio-rs/axum) web framework.
+The API is built using the [Axum](https://github.com/tokio-rs/axum) web framework with an integrated caching layer.
 
 ```mermaid
 graph TD
     A[Request] --> B{Axum Router}
     B --> C{Middleware Stack}
     C --> D{Route Handler}
-    D --> E{Module Hooks}
-    E --> F[Database Interaction]
-    F --> G[Response Serialization]
-    G --> H[Response]
+    D --> E{Cache Check}
+    E -->|Hit| H[Response]
+    E -->|Miss| F{Module Hooks}
+    F --> G[Database Interaction]
+    G --> I[Cache Store]
+    I --> J[Response Serialization]
+    J --> H[Response]
 
 ```
 
@@ -135,10 +145,13 @@ graph TD
 2.  **Axum Router:** Axum's router matches the request's URI and method to a specific route handler.
 3.  **Middleware Stack (Layers):** The request passes through a series of middleware layers. These can include logging, CORS, authentication, and validation against the OpenAPI spec. Middleware can modify the request or return a response early.
 4.  **Route Handler:** The specific function associated with the matched route is executed. This handler contains the core logic for the endpoint.
-5.  **Module Hooks:** The handler invokes hooks, allowing modules to interact with the request, process data, or trigger side effects.
-6.  **Database Interaction:** The relevant module logic interacts with the database to retrieve or persist data.
-7.  **Response Serialization:** The handler's return value is serialized into a JSON response.
-8.  **Response:** The serialized JSON response is sent back to the client.
+5.  **Cache Check:** For read operations, the handler first checks the ReDB cache using the entity key.
+6.  **Cache Hit:** If found and not expired, the cached JSON is returned directly.
+7.  **Module Hooks:** On cache miss, the handler invokes hooks, allowing modules to interact with the request, process data, or trigger side effects.
+8.  **Database Interaction:** The relevant module logic interacts with the database to retrieve or persist data.
+9.  **Cache Store:** Retrieved data is serialized to JSON and stored in the cache with TTL.
+10. **Response Serialization:** The handler's return value is serialized into a JSON response.
+11. **Response:** The serialized JSON response is sent back to the client.
 
 ### Request Flow Architecture Step Diagram
 
@@ -148,16 +161,23 @@ sequenceDiagram
     participant Router as Axum Router
     participant Middleware as Middleware Stack
     participant Handler as Route Handler
+    participant Cache as ReDB Cache
     participant Hooks as Module Hooks
     participant DB as Database
     
     Client->>Router: HTTP Request
     Router->>Middleware: Route Match
     Middleware->>Handler: Validated Request
-    Handler->>Hooks: Invoke Module Hooks
-    Hooks->>DB: Data Operations
-    DB->>Hooks: Query Results
-    Hooks->>Handler: Processed Data
+    Handler->>Cache: Check Cache
+    alt Cache Hit
+        Cache->>Handler: Cached JSON
+    else Cache Miss
+        Handler->>Hooks: Invoke Module Hooks
+        Hooks->>DB: Data Operations
+        DB->>Hooks: Query Results
+        Hooks->>Handler: Processed Data
+        Handler->>Cache: Store in Cache
+    end
     Handler->>Client: JSON Response
 ```
 
@@ -380,6 +400,18 @@ The database schema is dynamically generated based on the entity schemas defined
 - **Multi-Value Fields**: Fields with a cardinality other than 1 are stored in separate tables, named using the `field_<entity_id>_<field_id>` convention.
 
 For a detailed explanation of the database schema and table structure, see the [Entity Content Storage System](./entity-content-storage-system/entity-content-storage.md) document.
+
+### Caching Layer
+
+The system implements a high-performance caching layer using ReDB, a persistent key-value store written in Rust:
+
+- **K/V Architecture**: Entities are stored as key-value pairs where keys follow the format `{entity_type}:{content_id}`
+- **JSON Values**: Complete entity representations are cached as JSON, avoiding the need for database joins on cache hits
+- **TTL Support**: Each cache entry has a configurable time-to-live (default 24 hours)
+- **Content Hashing**: SHA256 hashes track content changes for efficient cache invalidation
+- **Automatic Eviction**: Expired entries are automatically removed based on TTL settings
+
+The cache significantly improves read performance by serving frequently accessed content directly from the ReDB store without database queries.
 
 ### Frontend Testing
 

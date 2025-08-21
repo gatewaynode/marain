@@ -39,16 +39,19 @@ graph TB
     subgraph "Storage"
         SQLITE[(SQLite)]
         POSTGRES[(PostgreSQL)]
+        CACHE[(ReDB K/V Cache)]
     end
     
     UI --> TAURI
     TAURI --> API
+    API --> CACHE
     API --> HOOKS
     HOOKS --> MOD1
     HOOKS --> MOD2
     HOOKS --> MOD3
     HOOKS --> MODN
     API --> DB
+    CACHE --> DB
     DB --> SQLITE
     DB --> POSTGRES
     
@@ -65,16 +68,23 @@ sequenceDiagram
     participant Router as Axum Router
     participant Middleware as Middleware Stack
     participant Handler as Route Handler
+    participant Cache as ReDB Cache
     participant Hooks as Module Hooks
     participant DB as Database
     
     Client->>Router: HTTP Request
     Router->>Middleware: Route Match
     Middleware->>Handler: Validated Request
-    Handler->>Hooks: Invoke Module Hooks
-    Hooks->>DB: Data Operations
-    DB->>Hooks: Query Results
-    Hooks->>Handler: Processed Data
+    Handler->>Cache: Check Cache
+    alt Cache Hit
+        Cache->>Handler: Cached JSON
+    else Cache Miss
+        Handler->>Hooks: Invoke Module Hooks
+        Hooks->>DB: Data Operations
+        DB->>Hooks: Query Results
+        Hooks->>Handler: Processed Data
+        Handler->>Cache: Store in Cache
+    end
     Handler->>Client: JSON Response
 ```
 
@@ -91,9 +101,10 @@ sequenceDiagram
   - Exposes Tauri commands to frontend
   - Coordinates backend services through dependency injection
   - Manages application state via `AppState` struct containing database connection
-- **Dependency Injection**: 
+- **Dependency Injection**:
   - Database connection is initialized once and passed to all components
-  -
+  - JSON cache is initialized and passed via `AppState` to API handlers
+  - All stateful components receive dependencies through constructor injection
 
 #### 2. API Layer (`src-tauri/api/`)
 - **Purpose**: HTTP API endpoints and middleware
@@ -129,7 +140,22 @@ sequenceDiagram
   - `validation.rs`: Field validation and constraint enforcement
 - **Interfaces**: Field trait for extensible field type system
 
-#### 6. Module System (`src-tauri/modules/`)
+#### 6. JSON Cache Layer (`src-tauri/json-cache/`)
+- **Purpose**: High-performance key-value caching for entity content
+- **Key Files**:
+  - `lib.rs`: Core cache implementation using ReDB
+  - `error.rs`: Cache-specific error handling
+- **Features**:
+  - K/V storage with `entity_type:content_id` keys
+  - TTL support with automatic expiration
+  - Content hash tracking for change detection
+  - Thread-safe async operations via `CacheManager`
+  - Cache statistics and eviction capabilities
+- **Interfaces**:
+  - `JsonCache` for synchronous operations
+  - `CacheManager` for async operations with connection pooling
+
+#### 7. Module System (`src-tauri/modules/`)
 - **Purpose**: Extensible module architecture
 - **Structure**: Each module as separate crate with:
   - `lib.rs`: Module registration and hook implementations
@@ -205,6 +231,39 @@ The system uses a structured, entity-centric approach to database schema design,
 - **Multi-Value Field Tables**: Fields with a cardinality other than 1 are stored in separate tables, named `field_<entity_id>_<field_id>`, to handle one-to-many relationships.
 - **Indexing**: Indexes are automatically created for commonly queried fields, such as slugs and foreign keys, to ensure optimal performance.
 - **Data Integrity**: The use of foreign key constraints and appropriate data types ensures that the data remains consistent and valid.
+
+### Caching Architecture
+
+The system implements a two-tier storage architecture with ReDB as a fast K/V cache layer sitting in front of the SQLite/PostgreSQL database:
+
+#### Cache Design
+- **K/V Store**: ReDB provides a persistent, ACID-compliant key-value store
+- **Cache Keys**: Format `{entity_type}:{content_id}` for direct entity lookups
+- **Cache Values**: Complete JSON representation of entities with all fields resolved
+- **TTL Management**: Each cache entry has configurable time-to-live (default 24 hours)
+- **Content Hashing**: SHA256 hashes track content changes for cache invalidation
+
+#### Cache Flow
+1. **Read Path**:
+   - API handler checks cache first using entity key
+   - Cache hit: Return JSON directly (no database query)
+   - Cache miss: Query database, serialize to JSON, store in cache, return
+   
+2. **Write Path**:
+   - Updates/deletes invalidate cache entries
+   - New content is cached on first read
+   - Background eviction removes expired entries
+
+#### Cache Configuration
+```yaml
+json_cache:
+  enabled: true
+  file: "json-cache/marain_json_cache.db"  # Relative to DATA_PATH
+  default_ttl: 86400  # 24 hours in seconds
+  max_size_mb: 100
+  eviction_policy: "lru"
+  auto_evict_expired: true
+```
 
 ```sql
 -- Example for an 'article' entity

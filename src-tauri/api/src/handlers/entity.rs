@@ -4,22 +4,20 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use chrono::Utc;
 use serde_json::json;
-use tracing::{debug, error, info};
-use uuid::Uuid;
+use tracing::{error, info, warn};
 
 use crate::{
     error::{ApiError, ApiResult},
     models::{
-        CreateEntityRequest, DeleteResponse, EntityListResponse, EntityResponse,
-        FilterParams, PaginationParams, UpdateEntityRequest,
+        CreateEntityRequest, DeleteResponse, EntityListResponse, EntityResponse, PaginationParams,
+        UpdateEntityRequest,
     },
     AppState,
 };
 
 /// Read a single entity by ID
-/// 
+///
 /// GET /api/v1/entity/read/{entity_type}/{content_id}
 #[utoipa::path(
     get,
@@ -40,47 +38,90 @@ pub async fn read_entity(
     Path((entity_type, content_id)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
     info!("Reading entity: type={}, id={}", entity_type, content_id);
-    
+
     // Validate entity type against hot-loaded schemas
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_exists = entity_definitions.iter()
+    let entity_exists = entity_definitions
+        .iter()
         .any(|entity| entity.definition().id == entity_type);
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    // Use EntityStorage to read from database
+
+    // Check cache first
+    let cache_key = format!("{}:{}", entity_type, content_id);
+    if let Ok(Some(cache_entry)) = state.cache.get(&cache_key).await {
+        info!("Cache hit for entity: {}", cache_key);
+        // Return cached data
+        if let Ok(response) = serde_json::from_value::<EntityResponse>(cache_entry.content) {
+            return Ok(Json(response));
+        }
+    }
+
+    // Cache miss, read from database
     use database::storage::EntityStorage;
-    
+
     let storage = EntityStorage::new(&state.db, &entity_type);
-    
+
     match storage.get(&content_id).await {
         Ok(Some(item)) => {
             // Convert the ContentItem to our API response format
             let data = serde_json::to_value(item.fields).unwrap_or(json!({}));
-            
+
             let response = EntityResponse {
-                id: item.id,
-                entity_type,
-                data,
+                id: item.id.clone(),
+                entity_type: entity_type.clone(),
+                data: data.clone(),
                 created_at: item.created_at,
                 updated_at: item.updated_at,
             };
-            
+
+            // Cache the response
+            if let Ok(response_json) = serde_json::to_value(&response) {
+                // Get cache TTL from config or use default
+                let cache_ttl =
+                    schema_manager::config_access::get_system_i64("json_cache.default_ttl")
+                        .unwrap_or(86400);
+
+                // Calculate content hash
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(serde_json::to_string(&data).unwrap_or_default());
+                let content_hash = format!("{:x}", hasher.finalize());
+
+                // Store in cache
+                if let Err(e) = state
+                    .cache
+                    .set(
+                        &cache_key,
+                        &response_json,
+                        &entity_type,
+                        cache_ttl,
+                        &content_hash,
+                    )
+                    .await
+                {
+                    warn!("Failed to cache entity: {}", e);
+                } else {
+                    info!("Cached entity: {}", cache_key);
+                }
+            }
+
             Ok(Json(response))
         }
-        Ok(None) => {
-            Err(ApiError::EntityNotFound(format!("Entity {} with id {} not found", entity_type, content_id)))
-        }
+        Ok(None) => Err(ApiError::EntityNotFound(format!(
+            "Entity {} with id {} not found",
+            entity_type, content_id
+        ))),
         Err(e) => {
             error!("Database error reading entity: {}", e);
             Err(ApiError::DatabaseError(e.to_string()))
         }
     }
-    
 }
 
 /// List entities of a specific type with pagination
-/// 
+///
 /// GET /api/v1/entity/list/{entity_type}
 #[utoipa::path(
     get,
@@ -103,48 +144,53 @@ pub async fn list_entities(
     Query(pagination): Query<PaginationParams>,
 ) -> ApiResult<impl IntoResponse> {
     info!("Listing entities: type={}", entity_type);
-    
+
     // Validate entity type against hot-loaded schemas
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_exists = entity_definitions.iter()
+    let entity_exists = entity_definitions
+        .iter()
         .any(|entity| entity.definition().id == entity_type);
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    
+
     let page = pagination.page.unwrap_or(1);
     let page_size = pagination.page_size.unwrap_or(20);
     let offset = (page - 1) * page_size;
-    
+
     // Use EntityStorage to list from database
     use database::storage::EntityStorage;
-    
+
     let storage = EntityStorage::new(&state.db, &entity_type);
-    
+
     // Get items with pagination (convert usize to i64)
-    match storage.list(Some(page_size as i64), Some(offset as i64)).await {
+    match storage
+        .list(Some(page_size as i64), Some(offset as i64))
+        .await
+    {
         Ok(items) => {
             // Convert ContentItems to EntityResponses
-            let entities: Vec<EntityResponse> = items.into_iter().map(|item| {
-                EntityResponse {
+            let entities: Vec<EntityResponse> = items
+                .into_iter()
+                .map(|item| EntityResponse {
                     id: item.id,
                     entity_type: entity_type.clone(),
                     data: serde_json::to_value(item.fields).unwrap_or(json!({})),
                     created_at: item.created_at,
                     updated_at: item.updated_at,
-                }
-            }).collect();
-            
+                })
+                .collect();
+
             // Get total count
             let total = entities.len(); // In production, you'd want a separate count query
-            
+
             let response = EntityListResponse {
                 entities,
                 total,
                 page,
                 page_size,
             };
-            
+
             Ok(Json(response))
         }
         Err(e) => {
@@ -155,7 +201,7 @@ pub async fn list_entities(
 }
 
 /// Create a new entity
-/// 
+///
 /// POST /api/v1/entity/create/{entity_type}
 #[utoipa::path(
     post,
@@ -177,28 +223,30 @@ pub async fn create_entity(
     Json(request): Json<CreateEntityRequest>,
 ) -> ApiResult<impl IntoResponse> {
     info!("Creating entity: type={}", entity_type);
-    
+
     // Validate entity type against hot-loaded schemas
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_exists = entity_definitions.iter()
+    let entity_exists = entity_definitions
+        .iter()
         .any(|entity| entity.definition().id == entity_type);
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    
+
     // Use EntityStorage to create in database
     use database::storage::EntityStorage;
     use std::collections::HashMap;
-    
+
     let storage = EntityStorage::new(&state.db, &entity_type);
-    
+
     // Convert JSON data to HashMap for storage
-    let fields: HashMap<String, serde_json::Value> = if let serde_json::Value::Object(map) = request.data {
-        map.into_iter().collect()
-    } else {
-        return Err(ApiError::BadRequest("Invalid data format".to_string()));
-    };
-    
+    let fields: HashMap<String, serde_json::Value> =
+        if let serde_json::Value::Object(map) = request.data {
+            map.into_iter().collect()
+        } else {
+            return Err(ApiError::BadRequest("Invalid data format".to_string()));
+        };
+
     match storage.create(fields).await {
         Ok(id) => {
             // Fetch the created item to return full data
@@ -213,9 +261,9 @@ pub async fn create_entity(
                     };
                     Ok((StatusCode::CREATED, Json(response)))
                 }
-                Ok(None) => {
-                    Err(ApiError::InternalError("Created entity not found".to_string()))
-                }
+                Ok(None) => Err(ApiError::InternalError(
+                    "Created entity not found".to_string(),
+                )),
                 Err(e) => {
                     error!("Database error fetching created entity: {}", e);
                     Err(ApiError::DatabaseError(e.to_string()))
@@ -230,7 +278,7 @@ pub async fn create_entity(
 }
 
 /// Update an existing entity
-/// 
+///
 /// POST /api/v1/entity/update/{entity_type}/{content_id}
 #[utoipa::path(
     post,
@@ -254,34 +302,37 @@ pub async fn update_entity(
     Json(request): Json<UpdateEntityRequest>,
 ) -> ApiResult<impl IntoResponse> {
     info!("Updating entity: type={}, id={}", entity_type, content_id);
-    
+
     // Validate entity type against hot-loaded schemas
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_exists = entity_definitions.iter()
+    let entity_exists = entity_definitions
+        .iter()
         .any(|entity| entity.definition().id == entity_type);
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    
+
     // Use EntityStorage to update in database
     use database::storage::EntityStorage;
     use std::collections::HashMap;
-    
+
     // Check if entity is versioned
-    let is_versioned = entity_definitions.iter()
+    let is_versioned = entity_definitions
+        .iter()
         .find(|entity| entity.definition().id == entity_type)
         .map(|entity| entity.definition().versioned)
         .unwrap_or(false);
-    
+
     let storage = EntityStorage::new_versioned(&state.db, &entity_type, is_versioned);
-    
+
     // Convert JSON data to HashMap for storage
-    let fields: HashMap<String, serde_json::Value> = if let serde_json::Value::Object(map) = request.data {
-        map.into_iter().collect()
-    } else {
-        return Err(ApiError::BadRequest("Invalid data format".to_string()));
-    };
-    
+    let fields: HashMap<String, serde_json::Value> =
+        if let serde_json::Value::Object(map) = request.data {
+            map.into_iter().collect()
+        } else {
+            return Err(ApiError::BadRequest("Invalid data format".to_string()));
+        };
+
     match storage.update(&content_id, fields).await {
         Ok(_) => {
             // Fetch the updated item to return full data
@@ -296,9 +347,10 @@ pub async fn update_entity(
                     };
                     Ok(Json(response))
                 }
-                Ok(None) => {
-                    Err(ApiError::EntityNotFound(format!("Entity {} with id {} not found", entity_type, content_id)))
-                }
+                Ok(None) => Err(ApiError::EntityNotFound(format!(
+                    "Entity {} with id {} not found",
+                    entity_type, content_id
+                ))),
                 Err(e) => {
                     error!("Database error fetching updated entity: {}", e);
                     Err(ApiError::DatabaseError(e.to_string()))
@@ -313,7 +365,7 @@ pub async fn update_entity(
 }
 
 /// Delete an entity
-/// 
+///
 /// POST /api/v1/entity/delete/{entity_type}/{content_id}
 #[utoipa::path(
     post,
@@ -334,20 +386,21 @@ pub async fn delete_entity(
     Path((entity_type, content_id)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
     info!("Deleting entity: type={}, id={}", entity_type, content_id);
-    
+
     // Validate entity type against hot-loaded schemas
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_exists = entity_definitions.iter()
+    let entity_exists = entity_definitions
+        .iter()
         .any(|entity| entity.definition().id == entity_type);
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    
+
     // Use EntityStorage to delete from database
     use database::storage::EntityStorage;
-    
+
     let storage = EntityStorage::new(&state.db, &entity_type);
-    
+
     match storage.delete(&content_id).await {
         Ok(_) => {
             let response = DeleteResponse {
@@ -387,32 +440,39 @@ pub async fn read_entity_version(
     State(state): State<AppState>,
     Path((entity_type, content_id, version_id)): Path<(String, String, i64)>,
 ) -> ApiResult<impl IntoResponse> {
-    info!("Reading entity revision: type={}, id={}, version={}", entity_type, content_id, version_id);
-    
+    info!(
+        "Reading entity revision: type={}, id={}, version={}",
+        entity_type, content_id, version_id
+    );
+
     // Validate entity type and check if it's versioned
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_def = entity_definitions.iter()
+    let entity_def = entity_definitions
+        .iter()
         .find(|entity| entity.definition().id == entity_type);
-    
+
     match entity_def {
         None => return Err(ApiError::InvalidEntityType(entity_type)),
         Some(def) => {
             if !def.definition().versioned {
-                return Err(ApiError::BadRequest(format!("Entity type '{}' is not versioned", entity_type)));
+                return Err(ApiError::BadRequest(format!(
+                    "Entity type '{}' is not versioned",
+                    entity_type
+                )));
             }
         }
     }
-    
+
     // Use EntityStorage with versioning to read from database
     use database::storage::EntityStorage;
-    
+
     let storage = EntityStorage::new_versioned(&state.db, &entity_type, true);
-    
+
     match storage.get_revision(&content_id, version_id).await {
         Ok(Some(item)) => {
             // Convert the ContentItem to our API response format
             let data = serde_json::to_value(item.fields).unwrap_or(json!({}));
-            
+
             let response = EntityResponse {
                 id: item.id,
                 entity_type,
@@ -420,12 +480,13 @@ pub async fn read_entity_version(
                 created_at: item.created_at,
                 updated_at: item.updated_at,
             };
-            
+
             Ok(Json(response))
         }
-        Ok(None) => {
-            Err(ApiError::EntityNotFound(format!("Entity {} with id {} and version {} not found", entity_type, content_id, version_id)))
-        }
+        Ok(None) => Err(ApiError::EntityNotFound(format!(
+            "Entity {} with id {} and version {} not found",
+            entity_type, content_id, version_id
+        ))),
         Err(e) => {
             error!("Database error reading entity revision: {}", e);
             Err(ApiError::DatabaseError(e.to_string()))
@@ -455,31 +516,36 @@ pub async fn list_entity_versions(
     State(state): State<AppState>,
     Path((entity_type, content_id)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
-    info!("Listing entity revisions: type={}, id={}", entity_type, content_id);
-    
+    info!(
+        "Listing entity revisions: type={}, id={}",
+        entity_type, content_id
+    );
+
     // Validate entity type and check if it's versioned
     let entity_definitions = schema_manager::get_entity_definitions();
-    let entity_def = entity_definitions.iter()
+    let entity_def = entity_definitions
+        .iter()
         .find(|entity| entity.definition().id == entity_type);
-    
+
     match entity_def {
         None => return Err(ApiError::InvalidEntityType(entity_type)),
         Some(def) => {
             if !def.definition().versioned {
-                return Err(ApiError::BadRequest(format!("Entity type '{}' is not versioned", entity_type)));
+                return Err(ApiError::BadRequest(format!(
+                    "Entity type '{}' is not versioned",
+                    entity_type
+                )));
             }
         }
     }
-    
+
     // Use EntityStorage with versioning to list revisions
     use database::storage::EntityStorage;
-    
+
     let storage = EntityStorage::new_versioned(&state.db, &entity_type, true);
-    
+
     match storage.list_revisions(&content_id).await {
-        Ok(revisions) => {
-            Ok(Json(revisions))
-        }
+        Ok(revisions) => Ok(Json(revisions)),
         Err(e) => {
             error!("Database error listing entity revisions: {}", e);
             Err(ApiError::DatabaseError(e.to_string()))

@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
+pub mod error;
 pub mod field_types;
 pub mod validation;
-pub mod error;
 
-pub use field_types::{FieldType, Field};
-pub use validation::FieldValidator;
 pub use error::{FieldsError, Result};
+pub use field_types::{Field, FieldType};
+pub use validation::FieldValidator;
 
 /// Default cardinality value for fields
 pub fn default_cardinality() -> i32 {
@@ -19,10 +19,12 @@ pub fn default_cardinality() -> i32 {
 pub trait FieldValue: Serialize + for<'de> Deserialize<'de> {
     /// Convert the field value to JSON
     fn to_json(&self) -> JsonValue;
-    
+
     /// Create from JSON value
-    fn from_json(value: &JsonValue) -> Result<Self> where Self: Sized;
-    
+    fn from_json(value: &JsonValue) -> Result<Self>
+    where
+        Self: Sized;
+
     /// Validate the field value
     fn validate(&self) -> Result<()>;
 }
@@ -44,12 +46,12 @@ impl FieldMetadata {
     pub fn is_multi_value(&self) -> bool {
         self.cardinality != 1
     }
-    
+
     /// Check if this field is unlimited cardinality
     pub fn is_unlimited(&self) -> bool {
         self.cardinality == -1
     }
-    
+
     /// Get the maximum number of values allowed
     pub fn max_values(&self) -> Option<usize> {
         if self.cardinality == -1 {
@@ -96,35 +98,35 @@ impl FieldCollection {
                 },
             );
         }
-        
+
         Self { fields, metadata }
     }
-    
+
     /// Get all fields
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
-    
+
     /// Get field by ID
     pub fn get_field(&self, id: &str) -> Option<&Field> {
         self.fields.iter().find(|f| f.id == id)
     }
-    
+
     /// Get field metadata by ID
     pub fn get_metadata(&self, id: &str) -> Option<&FieldMetadata> {
         self.metadata.get(id)
     }
-    
+
     /// Get all single-value fields
     pub fn single_value_fields(&self) -> Vec<&Field> {
         self.fields.iter().filter(|f| f.cardinality == 1).collect()
     }
-    
+
     /// Get all multi-value fields
     pub fn multi_value_fields(&self) -> Vec<&Field> {
         self.fields.iter().filter(|f| f.cardinality != 1).collect()
     }
-    
+
     /// Validate a set of field values
     pub fn validate_values(&self, values: &HashMap<String, JsonValue>) -> Result<()> {
         for field in &self.fields {
@@ -134,12 +136,12 @@ impl FieldCollection {
                     field.id
                 )));
             }
-            
+
             if let Some(value) = values.get(&field.id) {
                 FieldValidator::validate_field_value(field, value)?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -147,7 +149,7 @@ impl FieldCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_field_metadata() {
         let metadata = FieldMetadata {
@@ -159,11 +161,11 @@ mod tests {
             cardinality: -1,
             constraints: HashMap::new(),
         };
-        
+
         assert!(metadata.is_multi_value());
         assert!(metadata.is_unlimited());
         assert_eq!(metadata.max_values(), None);
-        
+
         let single_metadata = FieldMetadata {
             id: "single".to_string(),
             field_type: FieldType::Text,
@@ -173,7 +175,7 @@ mod tests {
             cardinality: 1,
             constraints: HashMap::new(),
         };
-        
+
         assert!(!single_metadata.is_multi_value());
         assert!(!single_metadata.is_unlimited());
         assert_eq!(single_metadata.max_values(), Some(1));

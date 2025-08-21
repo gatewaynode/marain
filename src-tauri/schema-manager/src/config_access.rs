@@ -1,8 +1,8 @@
 //! Helper module for accessing configurations using the new trait-based system
 //! This provides a bridge between the old and new configuration systems
 
-use crate::configuration::{Configuration, helpers};
-use crate::{get_configuration, get_all_configurations, get_configuration_value};
+use crate::configuration::{helpers, Configuration};
+use crate::{get_all_configurations, get_configuration, get_configuration_value};
 use serde_yaml::Value;
 use std::sync::Arc;
 
@@ -17,11 +17,11 @@ impl ConfigAccess {
         if parts.len() != 2 {
             return None;
         }
-        
+
         let config = get_configuration(parts[0])?;
         helpers::get_string(&**config, parts[1])
     }
-    
+
     /// Get a boolean value from a configuration
     /// Path format: "configuration_id.key"
     pub fn get_bool(path: &str) -> Option<bool> {
@@ -29,11 +29,11 @@ impl ConfigAccess {
         if parts.len() != 2 {
             return None;
         }
-        
+
         let config = get_configuration(parts[0])?;
         helpers::get_bool(&**config, parts[1])
     }
-    
+
     /// Get an integer value from a configuration
     /// Path format: "configuration_id.key"
     pub fn get_i64(path: &str) -> Option<i64> {
@@ -41,11 +41,11 @@ impl ConfigAccess {
         if parts.len() != 2 {
             return None;
         }
-        
+
         let config = get_configuration(parts[0])?;
         helpers::get_i64(&**config, parts[1])
     }
-    
+
     /// Get a float value from a configuration
     /// Path format: "configuration_id.key"
     pub fn get_f64(path: &str) -> Option<f64> {
@@ -53,17 +53,17 @@ impl ConfigAccess {
         if parts.len() != 2 {
             return None;
         }
-        
+
         let config = get_configuration(parts[0])?;
         helpers::get_f64(&**config, parts[1])
     }
-    
+
     /// Get a nested value using dot notation
     /// Path format: "configuration_id.nested.key.path"
     pub fn get_nested_value(path: &str) -> Option<Value> {
         get_configuration_value(path)
     }
-    
+
     /// Get all configurations for a specific provider/module
     pub fn get_configurations_by_provider(provider: &str) -> Vec<Arc<Box<dyn Configuration>>> {
         get_all_configurations()
@@ -71,12 +71,12 @@ impl ConfigAccess {
             .filter(|c| c.provider() == provider)
             .collect()
     }
-    
+
     /// Check if a configuration exists
     pub fn has_configuration(id: &str) -> bool {
         get_configuration(id).is_some()
     }
-    
+
     /// Get all configuration IDs
     pub fn get_all_configuration_ids() -> Vec<String> {
         get_all_configurations()
@@ -128,8 +128,9 @@ pub fn get_system_i64(key: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
-    
+
     #[test]
     fn test_config_access_parsing() {
         // Test path parsing
