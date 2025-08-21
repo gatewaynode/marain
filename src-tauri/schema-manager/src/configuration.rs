@@ -25,32 +25,32 @@ pub struct ConfigurationDefinition {
 pub trait Configuration: Send + Sync + Debug {
     /// Get the configuration definition
     fn definition(&self) -> &ConfigurationDefinition;
-    
+
     /// Get the configuration ID
     fn id(&self) -> &str {
         &self.definition().id
     }
-    
+
     /// Get the provider module name
     fn provider(&self) -> &str {
         &self.definition().provider
     }
-    
+
     /// Get a configuration value by key
     fn get_value(&self, key: &str) -> Option<&Value>;
-    
+
     /// Get all configuration values
     fn get_all_values(&self) -> &HashMap<String, Value>;
-    
+
     /// Validate the configuration values
     fn validate(&self) -> Result<(), ConfigurationError>;
-    
+
     /// Merge with another configuration (for overrides)
     fn merge(&mut self, other: &dyn Configuration) -> Result<(), ConfigurationError>;
-    
+
     /// Convert to a serializable format
     fn to_yaml(&self) -> Result<String, ConfigurationError>;
-    
+
     /// Apply configuration changes (hook for modules to react to config changes)
     fn apply_changes(&self) -> Result<(), ConfigurationError> {
         // Default implementation does nothing
@@ -70,14 +70,14 @@ impl GenericConfiguration {
     pub fn new(definition: ConfigurationDefinition) -> Self {
         Self { definition }
     }
-    
+
     /// Create from YAML content
     pub fn from_yaml(content: &str) -> Result<Self, ConfigurationError> {
         let definition: ConfigurationDefinition = serde_yaml::from_str(content)
             .map_err(|e| ConfigurationError::ParseError(e.to_string()))?;
         Ok(Self::new(definition))
     }
-    
+
     /// Load from file path
     pub fn from_file(path: &std::path::Path) -> Result<Self, ConfigurationError> {
         let content = std::fs::read_to_string(path)
@@ -90,42 +90,48 @@ impl Configuration for GenericConfiguration {
     fn definition(&self) -> &ConfigurationDefinition {
         &self.definition
     }
-    
+
     fn get_value(&self, key: &str) -> Option<&Value> {
         self.definition.values.get(key)
     }
-    
+
     fn get_all_values(&self) -> &HashMap<String, Value> {
         &self.definition.values
     }
-    
+
     fn validate(&self) -> Result<(), ConfigurationError> {
         // Basic validation - ensure required fields are present
         if self.definition.id.is_empty() {
-            return Err(ConfigurationError::ValidationError("Configuration ID cannot be empty".to_string()));
+            return Err(ConfigurationError::ValidationError(
+                "Configuration ID cannot be empty".to_string(),
+            ));
         }
         if self.definition.provider.is_empty() {
-            return Err(ConfigurationError::ValidationError("Configuration provider cannot be empty".to_string()));
+            return Err(ConfigurationError::ValidationError(
+                "Configuration provider cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
-    
+
     fn merge(&mut self, other: &dyn Configuration) -> Result<(), ConfigurationError> {
         // Only merge configurations with the same ID
         if self.id() != other.id() {
-            return Err(ConfigurationError::MergeError(
-                format!("Cannot merge configurations with different IDs: {} and {}", self.id(), other.id())
-            ));
+            return Err(ConfigurationError::MergeError(format!(
+                "Cannot merge configurations with different IDs: {} and {}",
+                self.id(),
+                other.id()
+            )));
         }
-        
+
         // Merge values - other configuration values override self
         for (key, value) in other.get_all_values() {
             self.definition.values.insert(key.clone(), value.clone());
         }
-        
+
         Ok(())
     }
-    
+
     fn to_yaml(&self) -> Result<String, ConfigurationError> {
         serde_yaml::to_string(&self.definition)
             .map_err(|e| ConfigurationError::SerializationError(e.to_string()))
@@ -149,7 +155,9 @@ impl std::fmt::Display for ConfigurationError {
             Self::ParseError(msg) => write!(f, "Configuration parse error: {}", msg),
             Self::ValidationError(msg) => write!(f, "Configuration validation error: {}", msg),
             Self::MergeError(msg) => write!(f, "Configuration merge error: {}", msg),
-            Self::SerializationError(msg) => write!(f, "Configuration serialization error: {}", msg),
+            Self::SerializationError(msg) => {
+                write!(f, "Configuration serialization error: {}", msg)
+            }
             Self::IoError(msg) => write!(f, "Configuration I/O error: {}", msg),
             Self::NotFound(msg) => write!(f, "Configuration not found: {}", msg),
         }
@@ -164,25 +172,25 @@ pub struct ConfigurationLoader;
 impl ConfigurationLoader {
     /// Load configurations from a directory
     pub async fn load_configurations_from_directory(
-        dir: &std::path::Path
+        dir: &std::path::Path,
     ) -> Result<Vec<Box<dyn Configuration>>, ConfigurationError> {
         let mut configurations = Vec::new();
-        
+
         if !dir.exists() {
             return Ok(configurations);
         }
-        
+
         // Get the current environment
         let env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
-        
+
         // Read all YAML files in the directory
-        let entries = std::fs::read_dir(dir)
-            .map_err(|e| ConfigurationError::IoError(e.to_string()))?;
-        
+        let entries =
+            std::fs::read_dir(dir).map_err(|e| ConfigurationError::IoError(e.to_string()))?;
+
         for entry in entries {
             let entry = entry.map_err(|e| ConfigurationError::IoError(e.to_string()))?;
             let path = entry.path();
-            
+
             // Check if it's a YAML configuration file
             if let Some(extension) = path.extension() {
                 if extension == "yaml" || extension == "yml" {
@@ -199,37 +207,54 @@ impl ConfigurationLoader {
                                 // For other configs, load all of them
                                 true
                             };
-                            
+
                             if should_load {
                                 match GenericConfiguration::from_file(&path) {
                                     Ok(config) => {
                                         if let Err(e) = config.validate() {
-                                            tracing::warn!("Configuration validation failed for {:?}: {}", path, e);
+                                            tracing::warn!(
+                                                "Configuration validation failed for {:?}: {}",
+                                                path,
+                                                e
+                                            );
                                             continue;
                                         }
-                                        configurations.push(Box::new(config) as Box<dyn Configuration>);
+                                        configurations
+                                            .push(Box::new(config) as Box<dyn Configuration>);
                                         tracing::info!("Loaded configuration from {:?}", path);
                                     }
                                     Err(e) => {
-                                        tracing::error!("Failed to load configuration from {:?}: {}", path, e);
+                                        tracing::error!(
+                                            "Failed to load configuration from {:?}: {}",
+                                            path,
+                                            e
+                                        );
                                     }
                                 }
                             } else {
-                                tracing::debug!("Skipping configuration file for different environment: {:?}", path);
+                                tracing::debug!(
+                                    "Skipping configuration file for different environment: {:?}",
+                                    path
+                                );
                             }
                         }
                     }
                 }
             }
         }
-        
-        tracing::info!("Loaded {} configurations from {:?} for environment: {}", configurations.len(), dir, env);
+
+        tracing::info!(
+            "Loaded {} configurations from {:?} for environment: {}",
+            configurations.len(),
+            dir,
+            env
+        );
         Ok(configurations)
     }
-    
+
     /// Load a single configuration from a file
     pub async fn load_configuration(
-        path: &std::path::Path
+        path: &std::path::Path,
     ) -> Result<Box<dyn Configuration>, ConfigurationError> {
         let config = GenericConfiguration::from_file(path)?;
         config.validate()?;
@@ -240,36 +265,39 @@ impl ConfigurationLoader {
 /// Helper functions for working with configuration values
 pub mod helpers {
     use super::*;
-    
+
     /// Extract a string value from configuration
     pub fn get_string(config: &dyn Configuration, key: &str) -> Option<String> {
-        config.get_value(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+        config
+            .get_value(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
-    
+
     /// Extract a boolean value from configuration
     pub fn get_bool(config: &dyn Configuration, key: &str) -> Option<bool> {
         config.get_value(key).and_then(|v| v.as_bool())
     }
-    
+
     /// Extract an integer value from configuration
     pub fn get_i64(config: &dyn Configuration, key: &str) -> Option<i64> {
         config.get_value(key).and_then(|v| v.as_i64())
     }
-    
+
     /// Extract a float value from configuration
     pub fn get_f64(config: &dyn Configuration, key: &str) -> Option<f64> {
         config.get_value(key).and_then(|v| v.as_f64())
     }
-    
+
     /// Extract a nested configuration value using dot notation
     pub fn get_nested<'a>(config: &'a dyn Configuration, path: &str) -> Option<&'a Value> {
         let parts: Vec<&str> = path.split('.').collect();
         let mut current = config.get_value(parts[0])?;
-        
+
         for part in &parts[1..] {
             current = current.get(part)?;
         }
-        
+
         Some(current)
     }
 }
@@ -277,13 +305,13 @@ pub mod helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_generic_configuration() {
         let mut values = HashMap::new();
         values.insert("debug".to_string(), Value::Bool(true));
         values.insert("port".to_string(), Value::Number(8080.into()));
-        
+
         let def = ConfigurationDefinition {
             id: "test".to_string(),
             name: "Test Configuration".to_string(),
@@ -292,25 +320,25 @@ mod tests {
             version: "1.0.0".to_string(),
             values,
         };
-        
+
         let config = GenericConfiguration::new(def);
-        
+
         assert_eq!(config.id(), "test");
         assert_eq!(config.provider(), "test_module");
         assert_eq!(config.get_value("debug"), Some(&Value::Bool(true)));
         assert!(config.validate().is_ok());
     }
-    
+
     #[test]
     fn test_configuration_merge() {
         let mut values1 = HashMap::new();
         values1.insert("debug".to_string(), Value::Bool(true));
         values1.insert("port".to_string(), Value::Number(8080.into()));
-        
+
         let mut values2 = HashMap::new();
         values2.insert("debug".to_string(), Value::Bool(false)); // Override
         values2.insert("host".to_string(), Value::String("localhost".to_string())); // New value
-        
+
         let def1 = ConfigurationDefinition {
             id: "test".to_string(),
             name: "Test Configuration".to_string(),
@@ -319,7 +347,7 @@ mod tests {
             version: "1.0.0".to_string(),
             values: values1,
         };
-        
+
         let def2 = ConfigurationDefinition {
             id: "test".to_string(),
             name: "Test Configuration Override".to_string(),
@@ -328,15 +356,18 @@ mod tests {
             version: "1.0.0".to_string(),
             values: values2,
         };
-        
+
         let mut config1 = GenericConfiguration::new(def1);
         let config2 = GenericConfiguration::new(def2);
-        
+
         assert!(config1.merge(&config2).is_ok());
-        
+
         // Check that values were merged correctly
         assert_eq!(config1.get_value("debug"), Some(&Value::Bool(false))); // Overridden
         assert_eq!(config1.get_value("port"), Some(&Value::Number(8080.into()))); // Kept
-        assert_eq!(config1.get_value("host"), Some(&Value::String("localhost".to_string()))); // Added
+        assert_eq!(
+            config1.get_value("host"),
+            Some(&Value::String("localhost".to_string()))
+        ); // Added
     }
 }

@@ -4,22 +4,22 @@ use thiserror::Error;
 pub enum JsonCacheError {
     #[error("ReDB error: {0}")]
     ReDB(String),
-    
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Cache entry not found: {0}")]
     NotFound(String),
-    
+
     #[error("Cache entry expired: {0}")]
     Expired(String),
-    
+
     #[error("Invalid cache key: {0}")]
     InvalidKey(String),
-    
+
     #[error("Cache operation failed: {0}")]
     OperationFailed(String),
 }

@@ -1,7 +1,7 @@
 use crate::{create_router, AppState};
 use std::sync::Arc;
-use tracing::{info, warn};
 use tokio::task::JoinHandle;
+use tracing::{info, warn};
 
 /// API server configuration
 pub struct ApiConfig {
@@ -28,13 +28,13 @@ impl ApiConfig {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Set the port
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;
         self
     }
-    
+
     /// Set whether to initialize test data
     pub fn with_test_data(mut self, init: bool) -> Self {
         self.init_test_data = init;
@@ -56,29 +56,38 @@ pub async fn start_server_with_config(
             warn!("Failed to initialize test data: {}", e);
         }
     }
-    
+
     let state = AppState { db, cache };
     let app = create_router(state);
-    
+
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     info!("API server listening on {}", addr);
-    info!("Swagger UI available at http://localhost:{}/api/v1/swagger", config.port);
-    
+    info!(
+        "Swagger UI available at http://localhost:{}/api/v1/swagger",
+        config.port
+    );
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
 /// Start the API server with default configuration
-pub async fn start_server(db: Arc<database::Database>, cache: Arc<json_cache::CacheManager>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_server(
+    db: Arc<database::Database>,
+    cache: Arc<json_cache::CacheManager>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = ApiConfig::default();
     start_server_with_config(db, cache, config).await
 }
 
 /// Start the API server in a background task
-pub fn spawn_server(db: Arc<database::Database>, cache: Arc<json_cache::CacheManager>) -> JoinHandle<()> {
+pub fn spawn_server(
+    db: Arc<database::Database>,
+    cache: Arc<json_cache::CacheManager>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         if let Err(e) = start_server(db, cache).await {
             tracing::error!("API server error: {}", e);
@@ -87,7 +96,11 @@ pub fn spawn_server(db: Arc<database::Database>, cache: Arc<json_cache::CacheMan
 }
 
 /// Start the API server in a background task with custom configuration
-pub fn spawn_server_with_config(db: Arc<database::Database>, cache: Arc<json_cache::CacheManager>, config: ApiConfig) -> JoinHandle<()> {
+pub fn spawn_server_with_config(
+    db: Arc<database::Database>,
+    cache: Arc<json_cache::CacheManager>,
+    config: ApiConfig,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         if let Err(e) = start_server_with_config(db, cache, config).await {
             tracing::error!("API server error: {}", e);

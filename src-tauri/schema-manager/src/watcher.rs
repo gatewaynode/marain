@@ -6,15 +6,20 @@ use tokio::task;
 use tracing::{debug, info, warn};
 
 /// Start watching the config and schemas directories for changes
-pub async fn start_watching(_db_pool: Option<sqlx::SqlitePool>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_watching(
+    _db_pool: Option<sqlx::SqlitePool>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config_dir = get_config_directory()?;
     let schemas_dir = get_schemas_directory()?;
-    
-    info!("Starting file watcher for directories: {:?} and {:?}", config_dir, schemas_dir);
-    
+
+    info!(
+        "Starting file watcher for directories: {:?} and {:?}",
+        config_dir, schemas_dir
+    );
+
     // Create a channel for file events
     let (tx, rx) = channel();
-    
+
     // Create a watcher with a debounce period
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<Event, notify::Error>| {
@@ -24,33 +29,33 @@ pub async fn start_watching(_db_pool: Option<sqlx::SqlitePool>) -> Result<(), Bo
         },
         Config::default().with_poll_interval(Duration::from_secs(1)),
     )?;
-    
+
     // Start watching both directories
     watcher.watch(&config_dir, RecursiveMode::NonRecursive)?;
     if schemas_dir.exists() {
         watcher.watch(&schemas_dir, RecursiveMode::NonRecursive)?;
     }
-    
+
     // Spawn a task to handle file events
     task::spawn_blocking(move || {
         info!("File watcher task started");
-        
+
         // Keep the watcher alive
         let _watcher = watcher;
-        
+
         // Process events
         for event in rx {
             handle_file_event(event);
         }
     });
-    
+
     Ok(())
 }
 
 /// Handle file system events
 fn handle_file_event(event: Event) {
     debug!("File event: {:?}", event);
-    
+
     match event.kind {
         EventKind::Modify(_) | EventKind::Create(_) => {
             // Check if the event is for a YAML file
@@ -84,7 +89,7 @@ fn handle_file_event(event: Event) {
 fn handle_schema_change(path: &Path) {
     use crate::action_generator::{ActionGenerator, FileType};
     use crate::diff_engine::DiffEngine;
-    
+
     // Load the new schema
     let new_content = match std::fs::read_to_string(path) {
         Ok(content) => content,
@@ -93,7 +98,7 @@ fn handle_schema_change(path: &Path) {
             return;
         }
     };
-    
+
     let new_schema: serde_yaml::Value = match serde_yaml::from_str(&new_content) {
         Ok(schema) => schema,
         Err(e) => {
@@ -101,27 +106,27 @@ fn handle_schema_change(path: &Path) {
             return;
         }
     };
-    
+
     // Get the old schema from cache
     let path_str = path.to_string_lossy().to_string();
     let old_schema = {
         let cache = crate::FILE_STATE_CACHE.read().unwrap();
         cache.get(&path_str).cloned()
     };
-    
+
     // If we have an old schema, generate a diff
     if let Some(old) = old_schema {
         let diff = DiffEngine::compare(&old, &new_schema);
-        
+
         if diff.has_changes() {
             info!("Schema changes detected in {:?}", path);
-            
+
             // Generate actions based on the diff
             let file_type = FileType::from_path(path);
             match ActionGenerator::generate_actions(file_type, &diff) {
                 Ok(actions) => {
                     info!("Generated {} actions from schema changes", actions.len());
-                    
+
                     // If we have a database pool, execute the actions
                     if let Some(pool) = crate::get_database_pool() {
                         let pool_clone = pool.clone();
@@ -136,13 +141,13 @@ fn handle_schema_change(path: &Path) {
             }
         }
     }
-    
+
     // Update the cache with the new schema
     {
         let mut cache = crate::FILE_STATE_CACHE.write().unwrap();
         cache.insert(path_str, new_schema);
     }
-    
+
     // Reload schemas asynchronously
     tokio::spawn(async {
         crate::reload_schemas().await;
@@ -152,13 +157,13 @@ fn handle_schema_change(path: &Path) {
 /// Handle schema file removal
 fn handle_schema_removal(path: &Path) {
     let path_str = path.to_string_lossy().to_string();
-    
+
     // Remove from cache
     {
         let mut cache = crate::FILE_STATE_CACHE.write().unwrap();
         cache.remove(&path_str);
     }
-    
+
     // Reload schemas asynchronously
     tokio::spawn(async {
         crate::reload_schemas().await;
@@ -166,14 +171,19 @@ fn handle_schema_removal(path: &Path) {
 }
 
 /// Execute actions generated from schema changes
-async fn execute_schema_actions(actions: Vec<crate::action_generator::Action>, pool: sqlx::SqlitePool) {
+async fn execute_schema_actions(
+    actions: Vec<crate::action_generator::Action>,
+    pool: sqlx::SqlitePool,
+) {
     use crate::action_executor::ActionExecutor;
-    
+
     let executor = ActionExecutor::new(pool);
     match executor.execute_actions(actions).await {
         Ok(report) => {
-            info!("Schema actions executed successfully: {} successful, {} failed", 
-                  report.successful_actions, report.failed_actions);
+            info!(
+                "Schema actions executed successfully: {} successful, {} failed",
+                report.successful_actions, report.failed_actions
+            );
         }
         Err(e) => {
             warn!("Failed to execute schema actions: {}", e);
@@ -211,17 +221,23 @@ fn is_schema_file(path: &Path) -> bool {
 fn get_config_directory() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     // Get the current working directory
     let cwd = std::env::current_dir()?;
-    
+
     // Navigate to the project root if we're in src-tauri
     let project_root = if cwd.ends_with("src-tauri") || cwd.ends_with("app") {
         cwd.parent()
-            .and_then(|p| if p.ends_with("src-tauri") { p.parent() } else { Some(p) })
+            .and_then(|p| {
+                if p.ends_with("src-tauri") {
+                    p.parent()
+                } else {
+                    Some(p)
+                }
+            })
             .ok_or("Failed to get project root")?
             .to_path_buf()
     } else {
         cwd
     };
-    
+
     Ok(project_root.join("config"))
 }
 
@@ -229,16 +245,22 @@ fn get_config_directory() -> Result<std::path::PathBuf, Box<dyn std::error::Erro
 fn get_schemas_directory() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     // Get the current working directory
     let cwd = std::env::current_dir()?;
-    
+
     // Navigate to the project root if we're in src-tauri
     let project_root = if cwd.ends_with("src-tauri") || cwd.ends_with("app") {
         cwd.parent()
-            .and_then(|p| if p.ends_with("src-tauri") { p.parent() } else { Some(p) })
+            .and_then(|p| {
+                if p.ends_with("src-tauri") {
+                    p.parent()
+                } else {
+                    Some(p)
+                }
+            })
             .ok_or("Failed to get project root")?
             .to_path_buf()
     } else {
         cwd
     };
-    
+
     Ok(project_root.join("schemas"))
 }
