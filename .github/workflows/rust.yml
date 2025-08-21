@@ -108,7 +108,7 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install gtk+3 webkit2gtk
+          brew install gtk+3 webkitgtk
       
       # Cache dependencies
       - name: Cache cargo registry
