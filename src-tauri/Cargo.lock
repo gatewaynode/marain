@@ -75,6 +75,7 @@ dependencies = [
  "axum",
  "chrono",
  "database",
+ "json-cache",
  "schema-manager",
  "serde",
  "serde_json",
@@ -2148,6 +2149,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "json-cache"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "database",
+ "entities",
+ "fields",
+ "redb",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "json-patch"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2330,6 +2348,7 @@ dependencies = [
  "api",
  "database",
  "dotenv",
+ "json-cache",
  "once_cell",
  "schema-manager",
  "serde",
@@ -3422,6 +3441,15 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "redb"
+version = "2.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59b38b05028f398f08bea4691640503ec25fcb60b82fb61ce1f8fd1f4fccd3f7"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "redox_syscall"

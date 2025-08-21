@@ -460,9 +460,9 @@ fn generate_uuid() -> String {
 mod tests {
     use super::*;
     use crate::Database;
-    use std::sync::Once;
+    use std::sync::atomic::{AtomicU32, Ordering};
     
-    static mut TEST_COUNTER: u32 = 0;
+    static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
     
     fn get_test_db_path() -> String {
         // Get the project root by navigating up from CARGO_MANIFEST_DIR
@@ -476,14 +476,18 @@ mod tests {
         std::fs::create_dir_all(&test_db_dir).unwrap();
         
         // Use a unique database for each test to avoid conflicts
-        let test_id = unsafe {
-            TEST_COUNTER += 1;
-            TEST_COUNTER
-        };
+        // Use atomic counter for thread safety
+        let test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
         
-        let db_path = test_db_dir.join(format!("test_storage_{}.db", test_id));
+        // Include timestamp to ensure uniqueness even across test runs
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
         
-        // Clean up any existing test database with this name
+        let db_path = test_db_dir.join(format!("test_storage_{}_{}.db", test_id, timestamp));
+        
+        // Clean up any existing test database with this name (shouldn't exist with timestamp)
         let _ = std::fs::remove_file(&db_path);
         
         db_path.to_string_lossy().to_string()
@@ -501,11 +505,13 @@ mod tests {
         let db = Database::new(&db_path).await.unwrap();
         
         // Create a test table (drop if exists first to ensure clean state)
+        // Properly await the DROP TABLE command to ensure it completes
         let _ = db.execute_raw("DROP TABLE IF EXISTS content_test").await;
         
+        // Use CREATE TABLE IF NOT EXISTS to be extra safe
         db.execute_raw(
             r#"
-            CREATE TABLE content_test (
+            CREATE TABLE IF NOT EXISTS content_test (
                 id TEXT PRIMARY KEY,
                 uuid TEXT NOT NULL UNIQUE,
                 user INTEGER DEFAULT 0,

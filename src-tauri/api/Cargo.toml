@@ -23,3 +23,4 @@ sha2 = "0.10"
 # Import local crates
 database = { path = "../database" }
 schema-manager = { path = "../schema-manager" }
+json-cache = { path = "../json-cache" }

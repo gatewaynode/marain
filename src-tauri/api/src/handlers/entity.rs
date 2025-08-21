@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde_json::json;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -48,7 +48,18 @@ pub async fn read_entity(
     if !entity_exists {
         return Err(ApiError::InvalidEntityType(entity_type));
     }
-    // Use EntityStorage to read from database
+    
+    // Check cache first
+    let cache_key = format!("{}:{}", entity_type, content_id);
+    if let Ok(Some(cache_entry)) = state.cache.get(&cache_key).await {
+        info!("Cache hit for entity: {}", cache_key);
+        // Return cached data
+        if let Ok(response) = serde_json::from_value::<EntityResponse>(cache_entry.content) {
+            return Ok(Json(response));
+        }
+    }
+    
+    // Cache miss, read from database
     use database::storage::EntityStorage;
     
     let storage = EntityStorage::new(&state.db, &entity_type);
@@ -59,12 +70,38 @@ pub async fn read_entity(
             let data = serde_json::to_value(item.fields).unwrap_or(json!({}));
             
             let response = EntityResponse {
-                id: item.id,
-                entity_type,
-                data,
+                id: item.id.clone(),
+                entity_type: entity_type.clone(),
+                data: data.clone(),
                 created_at: item.created_at,
                 updated_at: item.updated_at,
             };
+            
+            // Cache the response
+            if let Ok(response_json) = serde_json::to_value(&response) {
+                // Get cache TTL from config or use default
+                let cache_ttl = schema_manager::config_access::get_system_i64("json_cache.default_ttl")
+                    .unwrap_or(86400);
+                
+                // Calculate content hash
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(serde_json::to_string(&data).unwrap_or_default());
+                let content_hash = format!("{:x}", hasher.finalize());
+                
+                // Store in cache
+                if let Err(e) = state.cache.set(
+                    &cache_key,
+                    &response_json,
+                    &entity_type,
+                    cache_ttl,
+                    &content_hash
+                ).await {
+                    warn!("Failed to cache entity: {}", e);
+                } else {
+                    info!("Cached entity: {}", cache_key);
+                }
+            }
             
             Ok(Json(response))
         }
@@ -76,7 +113,6 @@ pub async fn read_entity(
             Err(ApiError::DatabaseError(e.to_string()))
         }
     }
-    
 }
 
 /// List entities of a specific type with pagination

@@ -29,6 +29,7 @@ pub use server::{start_server, start_server_with_config, spawn_server, spawn_ser
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<database::Database>,
+    pub cache: Arc<json_cache::CacheManager>,
 }
 
 /// OpenAPI documentation
