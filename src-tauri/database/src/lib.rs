@@ -106,7 +106,7 @@ mod tests {
     use super::*;
     use std::sync::Once;
 
-    static INIT: Once = Once::new();
+    static _INIT: Once = Once::new();
 
     fn get_test_db_path() -> String {
         // Get the project root by navigating up from CARGO_MANIFEST_DIR

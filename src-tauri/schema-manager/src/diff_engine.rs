@@ -1,5 +1,6 @@
 use serde_yaml::Value;
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use tracing::{debug, info, warn};
 
 /// Categories of changes based on their impact

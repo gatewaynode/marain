@@ -102,7 +102,7 @@ impl Action {
                     table_name: table_name.clone(),
                 })
             }
-            Action::DropIndex { index_name, table_name } => {
+            Action::DropIndex { index_name: _, table_name: _ } => {
                 // We'd need to store the original index definition to recreate it
                 None
             }

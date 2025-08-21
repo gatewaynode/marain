@@ -115,7 +115,7 @@ pub fn generate_all_fields_test_data() -> Vec<HashMap<String, serde_json::Value>
             data.insert("splash".to_string(), json!("<h1>Welcome to the Test</h1><p>This is rich text content with <strong>bold</strong> and <em>italic</em> formatting.</p>"));
             data.insert("body".to_string(), json!("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."));
             data.insert("count".to_string(), json!(42));
-            data.insert("float".to_string(), json!(3.14159));
+            data.insert("float".to_string(), json!(3.5));
             data.insert("bool".to_string(), json!(true));
             data.insert("sluggo".to_string(), json!("complete-field-test-entry"));
             data.insert("author".to_string(), json!("user-003"));
@@ -138,7 +138,7 @@ pub fn generate_all_fields_test_data() -> Vec<HashMap<String, serde_json::Value>
             data.insert("splash".to_string(), json!("<p>Simple HTML content</p>"));
             data.insert("body".to_string(), json!("Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."));
             data.insert("count".to_string(), json!(7));
-            data.insert("float".to_string(), json!(2.71828));
+            data.insert("float".to_string(), json!(2.5));
             data.insert("bool".to_string(), json!(false));
             data.insert("sluggo".to_string(), json!("minimal-field-entry"));
             data.insert("author".to_string(), json!("user-002"));

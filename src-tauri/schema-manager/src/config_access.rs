@@ -128,7 +128,8 @@ pub fn get_system_i64(key: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[allow(unused_imports)]
+use super::*;
     
     #[test]
     fn test_config_access_parsing() {

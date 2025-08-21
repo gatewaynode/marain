@@ -289,7 +289,7 @@ mod tests {
         
         assert!(FieldValidator::validate_field_value(&field, &json!(42)).is_ok());
         assert!(FieldValidator::validate_field_value(&field, &json!("123")).is_ok());
-        assert!(FieldValidator::validate_field_value(&field, &json!(3.14)).is_err());
+        assert!(FieldValidator::validate_field_value(&field, &json!(3.5)).is_err());
         assert!(FieldValidator::validate_field_value(&field, &json!("not a number")).is_err());
     }
     

@@ -1,5 +1,5 @@
 use crate::{Database, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{info, error};
 use entities::Entity;
@@ -13,9 +13,8 @@ pub struct DatabaseConfig {
     pub create_tables: bool,
 }
 
-impl DatabaseConfig {
-    /// Create a new database configuration with default paths
-    pub fn new() -> Self {
+impl Default for DatabaseConfig {
+    fn default() -> Self {
         let project_root = Self::find_project_root();
         
         // Always use the project root's data directory
@@ -25,6 +24,13 @@ impl DatabaseConfig {
             database_path: data_dir.join("marain.db"),
             create_tables: true,
         }
+    }
+}
+
+impl DatabaseConfig {
+    /// Create a new database configuration with default paths
+    pub fn new() -> Self {
+        Self::default()
     }
     
     /// Create a new database configuration with a specific database path
@@ -104,7 +110,7 @@ pub async fn initialize_database(config: DatabaseConfig) -> Result<Arc<Database>
 }
 
 /// Create tables for all entities using pre-loaded entities from schema-manager
-pub async fn create_entity_tables(db: &Database) -> Result<()> {
+pub async fn create_entity_tables(_db: &Database) -> Result<()> {
     info!("Creating entity tables from schema-manager entities");
     
     Ok(())

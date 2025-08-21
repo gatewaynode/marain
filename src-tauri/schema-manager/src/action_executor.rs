@@ -1,7 +1,9 @@
 use crate::action_generator::Action;
+#[allow(unused_imports)]
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, SqlitePool, Transaction};
+#[allow(unused_imports)]
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
@@ -189,7 +191,7 @@ impl ActionExecutor {
                 Ok(format!("Added column {} to table {}", column_name, table_name))
             }
             
-            Action::DropColumn { entity_id, table_name, column_name } => {
+            Action::DropColumn { entity_id: _, table_name: _, column_name: _ } => {
                 // SQLite doesn't support DROP COLUMN directly
                 // We need to recreate the table without the column
                 warn!("SQLite doesn't support DROP COLUMN directly. This requires table recreation.");
@@ -198,7 +200,7 @@ impl ActionExecutor {
                 ))
             }
             
-            Action::ModifyColumn { entity_id, table_name, column_name, old_type, new_type, sql } => {
+            Action::ModifyColumn { entity_id: _, table_name: _, column_name: _, old_type: _, new_type: _, sql: _ } => {
                 // SQLite doesn't support ALTER COLUMN directly
                 warn!("SQLite doesn't support ALTER COLUMN directly. This requires table recreation.");
                 Err(ExecutionError::ActionFailed(
@@ -206,7 +208,7 @@ impl ActionExecutor {
                 ))
             }
             
-            Action::CreateIndex { index_name, table_name, columns, sql } => {
+            Action::CreateIndex { index_name, table_name, columns: _, sql } => {
                 debug!("Creating index {} on table {}", index_name, table_name);
                 sqlx::query(sql).execute(&mut **tx).await?;
                 Ok(format!("Created index {} on table {}", index_name, table_name))

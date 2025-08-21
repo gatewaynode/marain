@@ -2,7 +2,7 @@ use crate::{Database, DatabaseError, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use sqlx::{Column, Row, SqlitePool};
+use sqlx::{Column, Row};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
@@ -408,7 +408,7 @@ impl<'a> EntityStorage<'a> {
                 } else if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
                     v.map(|n| JsonValue::Number(serde_json::Number::from(n))).unwrap_or(JsonValue::Null)
                 } else if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
-                    v.and_then(|n| serde_json::Number::from_f64(n))
+                    v.and_then(serde_json::Number::from_f64)
                         .map(JsonValue::Number)
                         .unwrap_or(JsonValue::Null)
                 } else if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
