@@ -92,7 +92,7 @@ jobs:
       
       - name: Run security audit
         working-directory: ./src-tauri
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
       
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

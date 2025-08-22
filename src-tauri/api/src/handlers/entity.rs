@@ -84,10 +84,8 @@ pub async fn read_entity(
                         .unwrap_or(86400);
 
                 // Calculate content hash
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(serde_json::to_string(&data).unwrap_or_default());
-                let content_hash = format!("{:x}", hasher.finalize());
+                use content::hash_value;
+                let content_hash = hash_value(&data);
 
                 // Store in cache
                 if let Err(e) = state

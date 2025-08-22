@@ -919,13 +919,20 @@ Task 17 has been successfully completed. The system has been migrated from UUIDs
 - **Database Performance**: Better index locality and range scan performance
 
 
-## Task 18
+## Task 18 Content functions crate creation
 
-- [ ] Status: Implementation Design
+- [ ] Status: Ready for work
 
+Create the "content" crate for storing common content related functions that are needed across the app, such as content bulk operations, publishing workflows, reorganizations and migrating content from type to type.  We can start with the content hashing function on line 25 in `src-tauri/api/src/test_data.rs` as this is likely needed in multiple places the content crate is a good place for it to be standardized.  And then we'll add other functions as we need them.
 
+Update the documentation to signify the purpose of this crate.
 
 ### Acceptance Criteria:
+
+- The "content" crate is created
+- The hashing function from testing is reimplemented in the content crate
+- Any other instances of the hashing function are consolidated to use the version in the content crate
+- Documentation is updated.
 
 ### **Implementation Notes:**
 

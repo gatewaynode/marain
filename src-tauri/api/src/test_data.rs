@@ -1,52 +1,8 @@
 use chrono::Utc;
+use content::{generate_content_hash, generate_id_from_title};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use ulid::Ulid;
-
-/// Helper function to generate ID from title
-fn generate_id_from_title(title: &str) -> String {
-    title
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == ' ' {
-                c
-            } else {
-                ' ' // Replace punctuation with space
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-/// Generate a content hash from the field values
-fn generate_content_hash(data: &HashMap<String, serde_json::Value>) -> String {
-    let mut hasher = Sha256::new();
-    let mut sorted_data: Vec<_> = data.iter().collect();
-    sorted_data.sort_by_key(|&(k, _)| k);
-
-    for (key, value) in sorted_data {
-        // Skip metadata fields when generating content hash
-        if key == "id"
-            || key == "user"
-            || key == "rid"
-            || key == "created_at"
-            || key == "updated_at"
-            || key == "last_cached"
-            || key == "cache_ttl"
-            || key == "content_hash"
-        {
-            continue;
-        }
-        hasher.update(key.as_bytes());
-        hasher.update(value.to_string().as_bytes());
-    }
-
-    format!("{:x}", hasher.finalize())
-}
 
 /// Generate lorem ipsum test data for the snippet entity
 pub fn generate_snippet_test_data() -> Vec<HashMap<String, serde_json::Value>> {
