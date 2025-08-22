@@ -18,9 +18,9 @@ utoipa-swagger-ui = { version = "6", features = ["axum"] }
 chrono = { version = "0.4", features = ["serde"] }
 ulid = { version = "1.1", features = ["serde"] }
 thiserror = "1.0"
-sha2 = "0.10"
 
 # Import local crates
 database = { path = "../database" }
 schema-manager = { path = "../schema-manager" }
 json-cache = { path = "../json-cache" }
+content = { path = "../content" }

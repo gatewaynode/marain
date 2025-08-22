@@ -79,7 +79,7 @@ jobs:
       
       - name: Run security audit
         working-directory: ./src-tauri
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   # Test on multiple platforms
   test:

@@ -3,8 +3,14 @@
 ## Project Structure & Module Organization
 - `src/`: SvelteKit UI (components, routes, stores, utils).
 - `src-tauri/`: Tauri app and Rust backend (`lib.rs`, commands, config).
-- `src-tauri/*`: Uses Cargo workspaces to separate concerns into crates
-- `src-tauri/app`: Is the main crate that orchestrates the app
+- `src-tauri/*`: Uses Cargo workspaces to separate concerns into crates.
+- `src-tauri/api`: Is the crate for all API functions and features.
+- `src-tauri/app`: Is the main crate that orchestrates the app.
+- `src-tauri/database`: For handling database stores.
+- `src-tauri/enitities`: For managing content schemas and their supporting features.
+- `src-tauri/fields`: For managing different field implementations.
+- `src-tauri/json-cache`: Cache specific functions and features.
+- `src-tauri/schema-manager`: Handles hot-reloading and accessing of entity and config schema values.
 - `static/`: Static assets bundled at build.
 - `data/`: Databases and logs
 - `schemas/`: YAML entity definitions

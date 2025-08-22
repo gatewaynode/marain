@@ -155,7 +155,28 @@ sequenceDiagram
   - `JsonCache` for synchronous operations
   - `CacheManager` for async operations with connection pooling
 
-#### 7. Module System (`src-tauri/modules/`)
+#### 7. Content Utilities (`src-tauri/content/`)
+- **Purpose**: Common content-related functions and utilities used across the application
+- **Key Files**:
+  - `lib.rs`: Main library interface and re-exports
+  - `hashing.rs`: Content hashing functions for change detection and caching
+  - `utils.rs`: Utility functions for ID generation, slug sanitization, and validation
+  - `operations.rs`: Bulk operations, content migration, and workflow utilities
+  - `error.rs`: Content-specific error types
+- **Features**:
+  - SHA256 content hashing with metadata field exclusion
+  - URL-safe ID generation from titles
+  - Slug sanitization and validation
+  - Bulk content processing with error tracking
+  - Content migration between entity types
+  - HTML stripping and text summarization
+- **Interfaces**:
+  - `generate_content_hash()`: Generate deterministic hashes for content
+  - `generate_id_from_title()`: Create URL-safe IDs from text
+  - `ContentMigrator`: Migrate content between different entity schemas
+  - `BulkOperationResult`: Track results of bulk operations
+
+#### 8. Module System (`src-tauri/modules/`)
 - **Purpose**: Extensible module architecture
 - **Structure**: Each module as separate crate with:
   - `lib.rs`: Module registration and hook implementations

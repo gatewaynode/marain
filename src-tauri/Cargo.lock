@@ -74,12 +74,12 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "content",
  "database",
  "json-cache",
  "schema-manager",
  "serde",
  "serde_json",
- "sha2",
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
@@ -612,6 +612,19 @@ name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "content"
+version = "0.1.0"
+dependencies = [
+ "entities",
+ "fields",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.12",
+ "tracing",
+]
 
 [[package]]
 name = "convert_case"
