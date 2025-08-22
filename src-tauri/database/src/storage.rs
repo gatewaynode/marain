@@ -5,6 +5,7 @@ use serde_json::Value as JsonValue;
 use sqlx::{Column, Row};
 use std::collections::HashMap;
 use tracing::{debug, info};
+use ulid::Ulid;
 
 /// Represents a content item stored in the database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,12 +50,10 @@ impl<'a> EntityStorage<'a> {
 
     /// Create a new content item
     pub async fn create(&self, fields: HashMap<String, JsonValue>) -> Result<String> {
-        let id = generate_id();
-        let uuid = generate_uuid();
-        let mut columns = vec!["id".to_string(), "uuid".to_string()];
-        let mut placeholders = vec!["?".to_string(), "?".to_string()];
-        let mut values: Vec<JsonValue> =
-            vec![JsonValue::String(id.clone()), JsonValue::String(uuid)];
+        let id = generate_ulid();
+        let mut columns = vec!["id".to_string()];
+        let mut placeholders = vec!["?".to_string()];
+        let mut values: Vec<JsonValue> = vec![JsonValue::String(id.clone())];
 
         // Build dynamic SQL based on provided fields
         for (field_name, field_value) in &fields {
@@ -233,7 +232,6 @@ impl<'a> EntityStorage<'a> {
             INSERT INTO {}
             SELECT
                 id,
-                uuid,
                 user,
                 rid,  -- Copy the current rid value
                 created_at,
@@ -439,24 +437,9 @@ impl<'a> EntityStorage<'a> {
     }
 }
 
-/// Generate a unique ID for content items
-fn generate_id() -> String {
-    // Simple UUID v4 generation
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-
-    let random: u32 = rand::random();
-    format!("{:x}-{:x}", timestamp, random)
-}
-
-/// Generate a UUID for content items
-fn generate_uuid() -> String {
-    // Generate a proper UUID v4
-    use uuid::Uuid;
-    Uuid::new_v4().to_string()
+/// Generate a ULID for content items
+fn generate_ulid() -> String {
+    Ulid::new().to_string()
 }
 
 #[cfg(test)]
@@ -516,7 +499,6 @@ mod tests {
             r#"
             CREATE TABLE IF NOT EXISTS content_test (
                 id TEXT PRIMARY KEY,
-                uuid TEXT NOT NULL UNIQUE,
                 user INTEGER DEFAULT 0,
                 rid INTEGER DEFAULT 1,
                 title TEXT,

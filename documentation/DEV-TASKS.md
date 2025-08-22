@@ -852,6 +852,23 @@ Task 16 has been successfully completed. The JSON cache using ReDB has been impl
 - Reusable design allows multiple ReDB instances
 - Thread-safe implementation using Arc<RwLock>
 
+
+## Task 17 
+
+- [ ] Status: Ready for work
+
+We need to move from using UUID to [ULID}(https://github.com/ulid/spec) in all entities and the JSON cache.  UUIDs are going to create a scalability problem as the database grows, being essentially unsortable.  ULID's allow the database to better optimize queries while providing similar assurances of uniqueness.
+
+The content and field id's need to be changed to ULIDs using the `ulid` crate (https://github.com/dylanhart/ulid-rs), and all implementations of UUID need to be removed from the default fields.
+
+### Acceptance Criteria:
+
+- All content `id` fields can remain but must use automatically generated ULIDs.
+- All instances of UUIDs need to be removed and the databases rebuilt.
+- The documentation needs to be updated to be clear that ULIDs are used, and never UUIDs.
+
+### **Implementation Notes:**
+
 ---
 ---
 
