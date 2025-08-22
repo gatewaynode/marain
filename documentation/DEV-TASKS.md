@@ -853,19 +853,79 @@ Task 16 has been successfully completed. The JSON cache using ReDB has been impl
 - Thread-safe implementation using Arc<RwLock>
 
 
-## Task 17 
+## Task 17 Migration from UUID to ULID
 
-- [ ] Status: Ready for work
+- [x] Status: Complete
 
-We need to move from using UUID to [ULID}(https://github.com/ulid/spec) in all entities and the JSON cache.  UUIDs are going to create a scalability problem as the database grows, being essentially unsortable.  ULID's allow the database to better optimize queries while providing similar assurances of uniqueness.
+We need to move from using UUID to [ULID](https://github.com/ulid/spec) in all entities and the JSON cache.  UUIDs are going to create a scalability problem as the database grows, being essentially unsortable.  ULID's allow the database to better optimize queries while providing similar assurances of uniqueness.
 
 The content and field id's need to be changed to ULIDs using the `ulid` crate (https://github.com/dylanhart/ulid-rs), and all implementations of UUID need to be removed from the default fields.
 
 ### Acceptance Criteria:
 
-- All content `id` fields can remain but must use automatically generated ULIDs.
-- All instances of UUIDs need to be removed and the databases rebuilt.
-- The documentation needs to be updated to be clear that ULIDs are used, and never UUIDs.
+- All content `id` fields can remain but must use automatically generated ULIDs. ✓
+- All instances of UUIDs need to be removed and the databases rebuilt. ✓
+- The documentation needs to be updated to be clear that ULIDs are used, and never UUIDs. ✓
+
+### **Implementation Notes:**
+
+Task 17 has been successfully completed. The system has been migrated from UUIDs to ULIDs (Universally Unique Lexicographically Sortable Identifiers) for better scalability and performance.
+
+1. **Dependency Updates**:
+   - Replaced `uuid` crate with `ulid` crate (v1.1) in all relevant Cargo.toml files
+   - Updated crates: `entities`, `api`, `database`
+   - Removed all `uuid` imports and replaced with `ulid::Ulid`
+
+2. **Code Changes**:
+   - **Entity Table Creation** (`src-tauri/entities/src/entity.rs`):
+     - Removed `uuid TEXT NOT NULL UNIQUE` column from all tables
+     - Updated indexes from `idx_{entity}_uuid` to `idx_{entity}_id`
+     - Removed UUID fields from revision tables
+   - **Storage Operations** (`src-tauri/database/src/storage.rs`):
+     - Replaced `generate_uuid()` function with `generate_ulid()` using `Ulid::new()`
+     - Removed UUID column from INSERT and SELECT operations
+   - **Test Data Generation** (`src-tauri/api/src/test_data.rs`):
+     - Removed all UUID field insertions from test data
+     - Updated multi-value field insertions to use ULID for field IDs
+
+3. **Database Schema Changes**:
+   - All entity tables now use ULID for the `id` field (26-character sortable string)
+   - Removed UUID columns and indexes from all tables
+   - Multi-value field tables also use ULIDs for their IDs
+   - Revision tables updated to match new schema
+
+4. **JSON Cache**:
+   - No changes required - cache keys already use string format `{entity_type}:{content_id}`
+   - ULIDs work seamlessly as cache keys
+
+5. **Documentation Updates**:
+   - Updated `entity-content-storage.md` to reflect ULID usage
+   - Removed all references to UUID fields
+   - Updated SQL examples to show new schema without UUID columns
+
+6. **Testing & Verification**:
+   - Database successfully rebuilt with `./scripts/clean-rebuild.sh`
+   - Test data created with ULID IDs (e.g., `01K37JHTANVSKN3JMAX7TWDJ40`)
+   - API endpoints tested:
+     - GET `/api/v1/entity/list/snippet` - Returns entities with ULID IDs
+     - POST `/api/v1/entity/create/snippet` - Creates new entities with ULID IDs
+   - All formatting (`cargo fmt`) and linting (`cargo clippy --all -- -D warnings`) checks passed
+
+**Benefits of ULID over UUID**:
+- **Lexicographically Sortable**: Improves database query performance and B-tree indexing
+- **Time-Ordered**: Contains timestamp information for natural chronological ordering
+- **Compact Representation**: 26 characters vs 36 for UUID with dashes
+- **Uniqueness**: Maintains cryptographic randomness for uniqueness guarantees
+- **Database Performance**: Better index locality and range scan performance
+
+
+## Task 18
+
+- [ ] Status: Implementation Design
+
+
+
+### Acceptance Criteria:
 
 ### **Implementation Notes:**
 
