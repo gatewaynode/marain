@@ -65,11 +65,10 @@ impl GenericEntity {
     /// Generate SQL for creating the main entity table
     fn generate_create_table_sql(&self) -> String {
         let mut columns = vec![
-            "id TEXT PRIMARY KEY".to_string(),
-            "uuid TEXT NOT NULL UNIQUE".to_string(), // Add UUID field
-            "user INTEGER DEFAULT 0".to_string(),    // Add user field with default 0
-            "rid INTEGER DEFAULT 1".to_string(),     // Add revision ID field
-            "last_cached TIMESTAMP".to_string(),     // When entity was last cached to JSON cache
+            "id TEXT PRIMARY KEY".to_string(), // ULID will be used for this field
+            "user INTEGER DEFAULT 0".to_string(), // Add user field with default 0
+            "rid INTEGER DEFAULT 1".to_string(), // Add revision ID field
+            "last_cached TIMESTAMP".to_string(), // When entity was last cached to JSON cache
             "cache_ttl INTEGER DEFAULT 86400".to_string(), // Cache time-to-live in seconds (default 24 hours)
             "content_hash TEXT".to_string(), // Hash of all field values for change detection
             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP".to_string(),
@@ -109,7 +108,6 @@ impl GenericEntity {
         format!(
             r#"CREATE TABLE IF NOT EXISTS {} (
     id TEXT PRIMARY KEY,
-    uuid TEXT NOT NULL UNIQUE,
     user INTEGER DEFAULT 0,
     rid INTEGER DEFAULT 1,
     parent_id TEXT NOT NULL,
@@ -130,7 +128,6 @@ impl GenericEntity {
 
         let mut columns = vec![
             "id TEXT".to_string(), // Not primary key in revision table
-            "uuid TEXT NOT NULL".to_string(),
             "user INTEGER DEFAULT 0".to_string(),
             "rid INTEGER NOT NULL".to_string(),  // Revision ID
             "last_cached TIMESTAMP".to_string(), // When entity was last cached to JSON cache
@@ -175,7 +172,6 @@ impl GenericEntity {
         Some(format!(
             r#"CREATE TABLE IF NOT EXISTS {} (
     id TEXT,
-    uuid TEXT NOT NULL,
     user INTEGER DEFAULT 0,
     rid INTEGER NOT NULL,
     parent_id TEXT NOT NULL,
@@ -194,9 +190,9 @@ impl GenericEntity {
     fn generate_index_sql(&self) -> Vec<String> {
         let mut indexes = Vec::new();
 
-        // Index for UUID field (for performance)
+        // Index for ID field (ULID) for performance
         indexes.push(format!(
-            "CREATE INDEX IF NOT EXISTS idx_{}_uuid ON {}(uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_{}_id ON {}(id)",
             self.definition.id,
             self.definition.table_name()
         ));
@@ -220,9 +216,9 @@ impl GenericEntity {
                     "CREATE INDEX IF NOT EXISTS idx_{}_parent ON {}(parent_id)",
                     table_name, table_name
                 ));
-                // Also add UUID index for multi-value tables
+                // Also add ID index for multi-value tables
                 indexes.push(format!(
-                    "CREATE INDEX IF NOT EXISTS idx_{}_uuid ON {}(uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_{}_id ON {}(id)",
                     table_name, table_name
                 ));
             }

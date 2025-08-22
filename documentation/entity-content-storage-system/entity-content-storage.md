@@ -10,7 +10,7 @@ This approach provides a robust, performant, and scalable storage solution that 
 2.  **Structured, Typed Storage**: Content is stored in tables and columns that directly map to the entity and field types defined in the YAML schemas, enabling strong typing and indexing.
 3.  **Predictable Naming Conventions**: Table and column names are generated deterministically from the entity and field IDs in the schemas.
 4.  **Optimized for Queries**: The design is optimized for efficient querying, filtering, and retrieval of content.
-5.  **Default Fields**: Every entity table includes default fields for UUID (universally unique identifier) and user tracking (defaults to 0 for system user).
+5.  **Default Fields**: Every entity table includes default fields for ULID (Universally Unique Lexicographically Sortable Identifier) and user tracking (defaults to 0 for system user).
 6.  **Revision Tracking**: Versioned entities maintain a complete history of changes through revision tables and revision IDs.
 
 ## Table Naming Conventions
@@ -47,8 +47,7 @@ The following examples illustrate how YAML entity schemas are translated into da
 
 Every entity table and multi-value field table automatically includes these default fields:
 
-- **`id`**: Primary key for the record. For entities with a `title` field, this defaults to the title stripped of punctuation, converted to lowercase, with spaces replaced by underscores.
-- **`uuid`**: A universally unique identifier (UUID v4) for the record, indexed for performance.
+- **`id`**: Primary key for the record using ULID (Universally Unique Lexicographically Sortable Identifier). For entities with a `title` field, this defaults to the title stripped of punctuation, converted to lowercase, with spaces replaced by underscores. Otherwise, a new ULID is generated.
 - **`user`**: Integer field tracking the user who created/modified the record (defaults to 0 for system user).
 - **`rid`**: Revision ID for versioned entities (defaults to 1, increments with each update).
 - **`last_cached`**: Timestamp indicating when the entity was last cached to the JSON cache (NULL if never cached).
@@ -83,8 +82,7 @@ fields:
 **Resulting SQL Table (`content_article`)**:
 ```sql
 CREATE TABLE content_article (
-    id TEXT PRIMARY KEY,          -- System-generated unique ID for the content item
-    uuid TEXT NOT NULL UNIQUE,    -- Universally unique identifier for the record
+    id TEXT PRIMARY KEY,          -- ULID for the content item
     user INTEGER DEFAULT 0,       -- User who created/modified the record (0 = system)
     rid INTEGER DEFAULT 1,        -- Revision ID (increments with each update)
     last_cached TIMESTAMP,        -- When entity was last cached to JSON cache
@@ -98,7 +96,7 @@ CREATE TABLE content_article (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_article_uuid ON content_article(uuid);
+CREATE INDEX idx_article_id ON content_article(id);
 ```
 
 ### 2. Multi-Value Field Table (`field_`)
@@ -119,8 +117,7 @@ fields:
 **Resulting SQL Table (`field_article_tags`)**:
 ```sql
 CREATE TABLE field_article_tags (
-    id TEXT PRIMARY KEY,                -- A unique ID for this specific relationship entry
-    uuid TEXT NOT NULL UNIQUE,          -- Universally unique identifier for the record
+    id TEXT PRIMARY KEY,                -- A ULID for this specific relationship entry
     user INTEGER DEFAULT 0,             -- User who created/modified the record (0 = system)
     parent_id TEXT NOT NULL,            -- The ID of the parent content_article item
     value TEXT NOT NULL,                -- The ID of the referenced 'tag' entity
@@ -130,7 +127,7 @@ CREATE TABLE field_article_tags (
 
 -- Indexes for efficient lookups
 CREATE INDEX idx_field_article_tags_parent ON field_article_tags(parent_id);
-CREATE INDEX idx_field_article_tags_uuid ON field_article_tags(uuid);
+CREATE INDEX idx_field_article_tags_id ON field_article_tags(id);
 ```
 
 ### 3. Field Reference Example
@@ -156,8 +153,7 @@ fields:
 **Resulting SQL Table (`content_multi`)**:
 ```sql
 CREATE TABLE content_multi (
-    id TEXT PRIMARY KEY,
-    uuid TEXT NOT NULL UNIQUE,    -- Universally unique identifier for the record
+    id TEXT PRIMARY KEY,          -- ULID for the content item
     user INTEGER DEFAULT 0,       -- User who created/modified the record (0 = system)
     rid INTEGER DEFAULT 1,        -- Revision ID (increments with each update)
     last_cached TIMESTAMP,        -- When entity was last cached to JSON cache
@@ -220,8 +216,7 @@ For a versioned `article` entity:
 **Main Table (`content_article`)** - Contains current version:
 ```sql
 CREATE TABLE content_article (
-    id TEXT PRIMARY KEY,
-    uuid TEXT NOT NULL UNIQUE,
+    id TEXT PRIMARY KEY,          -- ULID for the content item
     user INTEGER DEFAULT 0,
     rid INTEGER DEFAULT 1,        -- Current revision number
     last_cached TIMESTAMP,        -- When entity was last cached to JSON cache
@@ -239,8 +234,7 @@ CREATE TABLE content_article (
 **Revision Table (`content_revisions_article`)** - Contains historical versions:
 ```sql
 CREATE TABLE content_revisions_article (
-    id TEXT,                      -- Original content ID
-    uuid TEXT NOT NULL,
+    id TEXT,                      -- Original content ID (ULID)
     user INTEGER,
     rid INTEGER NOT NULL,         -- Revision number at time of snapshot
     last_cached TIMESTAMP,        -- When entity was last cached to JSON cache
@@ -306,7 +300,7 @@ Every entity table includes these cache-related fields:
    - SHA256 hash of all field values (excluding metadata fields)
    - Automatically calculated when entity is created or updated
    - Used for efficient change detection without comparing all fields
-   - Excludes system fields (id, uuid, user, rid, timestamps, cache fields)
+   - Excludes system fields (id, user, rid, timestamps, cache fields)
 
 ### Cache Workflow
 

@@ -29,12 +29,13 @@
 - Rust unit tests live beside code (`#[cfg(test)]`); integration tests per crate; use `rstest` when helpful.
 - Name tests with descriptive `snake_case`; focus on core logic and file/IO boundaries.
 - Frontend: no formal unit tests; use `bun run check` and manual flows for regressions.
-- Run: `cargo test -q` in `src-tauri/` and `src-tauri/bmm-lib/` before PRs.
+- Run: `cargo test` in `src-tauri/`
+- Run: `cargo clippy --all` in `src-tauri/` and resolve and issues
+- Run: `cargo fmt` in `src-tauri/` before finishing any task
 
 ## Security & Configuration Tips
 - Application security concerns are a top priority, always write secure code
 - Do not commit secrets or signing identities.
 - Ensure all dependencies are using the latest stable version
 - Ensure all database inputs are validated and handled as safely as possible (parameterized queries, stored procedures, injection string filtering before querying).
-- Ensure Rust toolchain, Bun, and Tauri prerequisites are installed for your OS.
 

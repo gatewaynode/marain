@@ -76,6 +76,7 @@ The Marain core is written in Rust it can operate independently of the frontend,
 *   **axum**: API server
 *   **tower**: HTTP toolkit, API middleware
 *   **utoipa**: Auto generate OpenAPI documentation
+*   **ReDB**: An embedded key/value store
 *   **sqlite**: Database default
 *   **postgres**: Remote database (optional)
 
