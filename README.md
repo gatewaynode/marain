@@ -6,13 +6,13 @@ A flexible, headless CMS, written in Rust.
 
 ## Background
 
-So that was my goal, make a CMS from scratch in languages I like, that qualifies as a large coding project from scratch using semi-autonomous LLM coding models.  CMS's are something I'm very deeply familiar with so creating one in the way I'd want to build it from scratch today has been a fun side effect of pushing coding LLMs to their limits.  I've learned a lot about the semi-autonomous model (not to be confused with yolo coding, or suggestion based coding), and I'm enjoying it.  So I think I'm going to finish this project and start testing it in production.
+So that was my goal, make a CMS from scratch in languages I like, that qualifies as a large coding project from scratch, using semi-autonomous LLM coding models.  CMS's are something I'm very deeply familiar with so creating one in the way I'd want to build it from scratch today has been a fun side effect of pushing coding LLMs to their limits.  I've learned a lot about the semi-autonomous model (not to be confused with yolo coding, or suggestion based coding), and I'm enjoying it.  So I think I'm going to finish this project and start testing it in production soon.
 
 ### My findings so far.  
 
 - Context rot is real, most models, even with compensating tooling will become less effective after passing 50% of their maximum context window.  And unfortunately compaction isn't safe, there is too much nuance and detail lost in the process to keep working on difficult features after compaction.  It's better to start over on the feature and better manage your context than to use compaction.
-    - This means you have to set narrow goals, move to modularization of an app early so you can achieve feature builds in one pass, one small piece at a time.
-- Most models seem to hallucinate around very difficult problems, lending proof to the theoretical attention limits of even SOTA hardware(it almost seems like frustration).  Maybe it's some sort of cognitive consistency pattern?  Seems more like straight confabulation though.
+    - This means you have to set narrow goals, move to modularization of an app early so you can achieve feature builds in one pass, one smallish piece at a time.
+- Most models seem to hallucinate around very difficult problems, lending proof to the theoretical attention limits of even SOTA hardware(it almost seems like frustration).  Maybe it's some sort of cognitive consistency pattern?  Seems more like straight confabulation though.  Anyway, isolating tough problems to where you can start on them with minimal context seems to work well to get around these quirks.
 - Distraction is a real problem with coding LLMs, small things can send them rabbit holing off on tangents.  And when this happens the work will be incomplete, even if you provide detailed contextual requirements.
 
 All that said.  After I figured out how to work with the two models I ended up using, Claude Opus 4.1 and Gemini Pro 2.5 in KiloCode, development has been blazingly fast and relatively surprise free.  This should be ready for general testing within the next few weeks.
@@ -25,6 +25,8 @@ All that said.  After I figured out how to work with the two models I ended up u
 - [x] Axum based REST API
 - [x] K/V store fast cache for prequeried content
 - [x] Switch to using ULIDs instead of UUIDs for cache keys and entity/field IDs
+- [x] Centralized content management features and functions in the `content` crate
+- [x] User management with the `user` crate with separation of sensitive user data
 - [ ] User profiles as entities
 - [ ] Isolated secure user sensitive data store
 - [ ] Implement work queue persistence layer

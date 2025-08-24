@@ -45,3 +45,7 @@
 - Ensure all dependencies are using the latest stable version
 - Ensure all database inputs are validated and handled as safely as possible (parameterized queries, stored procedures, injection string filtering before querying).
 
+## Documentation
+- The documentation in `/documentation/` is always updated if the implementation changes any details
+- The **Implementation Notes** is always where we store the task completion summary in the `/documentation/DEV-TASKS.md` file
+

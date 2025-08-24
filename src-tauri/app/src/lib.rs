@@ -6,6 +6,7 @@ use schema_manager::{config_access, get_configuration};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
+use user::{SecureLogConfig, UserDatabaseConfig, UserManager};
 
 /// Environment paths configuration
 #[derive(Debug, Clone)]
@@ -73,10 +74,11 @@ impl EnvPaths {
     }
 }
 
-/// Application state that holds the database connection, cache, and environment paths
+/// Application state that holds the database connection, cache, user manager, and environment paths
 pub struct AppState {
     pub db: Arc<Database>,
     pub cache: Arc<CacheManager>,
+    pub user_manager: Arc<UserManager>,
     pub env_paths: EnvPaths,
 }
 
@@ -305,9 +307,10 @@ pub fn run() {
     // Clone paths for async block
     let env_paths_clone = env_paths.clone();
     let env_paths_cache = env_paths.clone();
+    let env_paths_user = env_paths.clone();
 
     // Initialize database and schema-manager using the new architecture
-    let (db, cache) = runtime.block_on(async {
+    let (db, cache, user_manager) = runtime.block_on(async {
         tracing::info!("Initializing application systems");
 
         // First, initialize schema-manager to load all schemas
@@ -392,7 +395,84 @@ pub fn run() {
                     )
                 };
 
-                (db, cache)
+                // Initialize user database
+                let user_manager = {
+                    let user_db_enabled =
+                        config_access::get_system_bool("user_database.enabled").unwrap_or(true);
+
+                    if user_db_enabled {
+                        tracing::info!("Initializing user management system");
+
+                        // Get user database configuration from system config
+                        let user_db_file = config_access::get_system_string("user_database.file")
+                            .unwrap_or_else(|| "user-backend/marain_user.db".to_string());
+                        let max_connections =
+                            config_access::get_system_i64("user_database.max_connections")
+                                .unwrap_or(5) as u32;
+                        let connection_timeout =
+                            config_access::get_system_i64("user_database.connection_timeout")
+                                .unwrap_or(30) as u64;
+
+                        // Get secure log configuration
+                        let secure_log_file = config_access::get_system_string("secure_log.file")
+                            .unwrap_or_else(|| "user-backend/secure.log".to_string());
+                        let max_size_mb = config_access::get_system_i64("secure_log.max_size_mb")
+                            .unwrap_or(100) as u64;
+                        let max_rotations =
+                            config_access::get_system_i64("secure_log.max_rotations").unwrap_or(10)
+                                as u32;
+                        let enable_verification =
+                            config_access::get_system_bool("secure_log.enable_verification")
+                                .unwrap_or(true);
+
+                        let user_db_config = UserDatabaseConfig {
+                            database_path: env_paths_user.data_path.join(user_db_file),
+                            max_connections,
+                            connection_timeout,
+                            secure_log_config: SecureLogConfig {
+                                log_path: env_paths_user.data_path.join(secure_log_file),
+                                max_size_mb,
+                                max_rotations,
+                                enable_verification,
+                            },
+                        };
+
+                        match UserManager::new(user_db_config).await {
+                            Ok(manager) => {
+                                tracing::info!("User management system initialized successfully");
+                                Arc::new(manager)
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to initialize user management system: {}",
+                                    e
+                                );
+                                panic!(
+                                    "Cannot start application without user management system: {}",
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::warn!("User database is disabled in configuration");
+                        // Create a default user manager that won't be used
+                        let temp_config = UserDatabaseConfig {
+                            database_path: env_paths_user
+                                .data_path
+                                .join("user-backend/disabled.db"),
+                            max_connections: 1,
+                            connection_timeout: 30,
+                            secure_log_config: SecureLogConfig::default(),
+                        };
+                        Arc::new(
+                            UserManager::new(temp_config)
+                                .await
+                                .expect("Failed to create disabled user manager"),
+                        )
+                    }
+                };
+
+                (db, cache, user_manager)
             }
             Err(e) => {
                 tracing::error!("Failed to initialize database: {}", e);
@@ -401,7 +481,7 @@ pub fn run() {
         }
     });
 
-    // Clone the database and cache for the API server
+    // Clone the database, cache, and user manager for the API server
     let api_db = db.clone();
     let api_cache = cache.clone();
 
@@ -417,6 +497,7 @@ pub fn run() {
     let app_state = AppState {
         db,
         cache,
+        user_manager,
         env_paths,
     };
 
