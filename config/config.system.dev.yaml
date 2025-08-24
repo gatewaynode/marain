@@ -38,3 +38,19 @@ values:
     eviction_policy: "lru"  # Least Recently Used
     auto_evict_expired: true  # Automatically remove expired entries
     eviction_interval: 3600  # Check for expired entries every hour (seconds)
+  
+  # User Database configuration
+  user_database:
+    enabled: true
+    file: "user-backend/marain_user.db"  # Relative to DATA_PATH
+    max_connections: 5
+    connection_timeout: 30  # seconds
+    
+  # Secure Log configuration
+  secure_log:
+    enabled: true
+    file: "user-backend/secure.log"  # Relative to DATA_PATH
+    max_size_mb: 100  # Maximum log file size before rotation
+    max_rotations: 10  # Number of rotated log files to keep
+    enable_verification: true  # Enable cryptographic hash verification
+    rotation_check_interval: 300  # Check for rotation every 5 minutes (seconds)

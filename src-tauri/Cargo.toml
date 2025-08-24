@@ -8,6 +8,7 @@ members = [
     "fields",
     "json-cache",
     "content",
+    "user",
 ]
 resolver = "2"
 
