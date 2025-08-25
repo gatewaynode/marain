@@ -1,5 +1,6 @@
 use sqlx::{migrate::MigrateDatabase, Pool, Sqlite, SqlitePool};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::error::{Result, UserError};
@@ -34,7 +35,7 @@ pub struct UserDatabase {
     pool: Pool<Sqlite>,
     #[allow(dead_code)]
     config: UserDatabaseConfig,
-    secure_logger: SecureLogger,
+    secure_logger: Arc<SecureLogger>,
 }
 
 impl UserDatabase {
@@ -68,7 +69,7 @@ impl UserDatabase {
         .await?;
 
         // Initialize secure logger
-        let secure_logger = SecureLogger::new(config.secure_log_config.clone())?;
+        let secure_logger = Arc::new(SecureLogger::new(config.secure_log_config.clone())?);
 
         let db = Self {
             pool,
@@ -195,6 +196,61 @@ impl UserDatabase {
         .execute(&self.pool)
         .await?;
 
+        // Create passkey_credentials table for WebAuthn
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS passkey_credentials (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                credential_id BLOB NOT NULL UNIQUE,
+                public_key BLOB NOT NULL,
+                counter INTEGER NOT NULL DEFAULT 0,
+                transports TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Create magic_link_tokens table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS magic_link_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Create passkey_challenges table for WebAuthn challenge storage
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS passkey_challenges (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                challenge TEXT NOT NULL,
+                challenge_type TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // Create indexes for performance
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
             .execute(&self.pool)
@@ -220,6 +276,36 @@ impl UserDatabase {
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON tower_sessions(expiry_date)",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_passkey_user ON passkey_credentials(user_id)")
+            .execute(&self.pool)
+            .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_magic_link_token ON magic_link_tokens(token)")
+            .execute(&self.pool)
+            .await?;
+
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_magic_link_email ON magic_link_tokens(email)")
+            .execute(&self.pool)
+            .await?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_magic_link_expires ON magic_link_tokens(expires_at)",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_passkey_challenges_user ON passkey_challenges(user_id)",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_passkey_challenges_expires ON passkey_challenges(expires_at)",
         )
         .execute(&self.pool)
         .await?;
@@ -281,13 +367,18 @@ impl UserDatabase {
     }
 
     /// Get the database pool for external use
+    pub fn pool(&self) -> &Pool<Sqlite> {
+        &self.pool
+    }
+
+    /// Get the database pool for external use (deprecated, use pool() instead)
     pub fn get_pool(&self) -> &Pool<Sqlite> {
         &self.pool
     }
 
     /// Get the secure logger
-    pub fn get_logger(&self) -> &SecureLogger {
-        &self.secure_logger
+    pub fn get_logger(&self) -> Arc<SecureLogger> {
+        self.secure_logger.clone()
     }
 
     /// Verify database integrity
@@ -300,6 +391,9 @@ impl UserDatabase {
             "user_roles",
             "role_permissions",
             "tower_sessions",
+            "passkey_credentials",
+            "magic_link_tokens",
+            "passkey_challenges",
         ];
 
         for table in tables {
