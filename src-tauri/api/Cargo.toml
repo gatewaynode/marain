@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite"] }
@@ -24,3 +24,8 @@ database = { path = "../database" }
 schema-manager = { path = "../schema-manager" }
 json-cache = { path = "../json-cache" }
 content = { path = "../content" }
+user = { path = "../user" }
+
+# Authentication dependencies
+tower-sessions = "0.14"
+webauthn-rs = "0.5"

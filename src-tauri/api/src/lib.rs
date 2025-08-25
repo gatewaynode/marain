@@ -26,6 +26,7 @@ pub use server::{
 pub struct AppState {
     pub db: Arc<database::Database>,
     pub cache: Arc<json_cache::CacheManager>,
+    pub user_manager: Option<Arc<user::UserManager>>,
 }
 
 /// OpenAPI documentation
@@ -100,6 +101,34 @@ pub fn create_router(state: AppState) -> Router {
             "/entity/version/list/:entity_type/:content_id",
             get(handlers::entity::list_entity_versions),
         )
+        // PassKey authentication endpoints
+        .route(
+            "/auth/passkey/register/start",
+            post(handlers::auth::passkey_register_start),
+        )
+        .route(
+            "/auth/passkey/register/finish",
+            post(handlers::auth::passkey_register_finish),
+        )
+        .route(
+            "/auth/passkey/login/start",
+            post(handlers::auth::passkey_login_start),
+        )
+        .route(
+            "/auth/passkey/login/finish",
+            post(handlers::auth::passkey_login_finish),
+        )
+        .route(
+            "/auth/passkey/credentials",
+            get(handlers::auth::list_credentials),
+        )
+        .route(
+            "/auth/passkey/credentials/:id",
+            axum::routing::delete(handlers::auth::delete_credential),
+        )
+        // Session management endpoints
+        .route("/auth/logout", post(handlers::auth::logout))
+        .route("/auth/me", get(handlers::auth::get_current_user))
         // Health check
         .route("/health", get(handlers::health::health_check))
         // Apply middleware to all API routes

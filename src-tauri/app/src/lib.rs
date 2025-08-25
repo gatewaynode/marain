@@ -6,7 +6,7 @@ use schema_manager::{config_access, get_configuration};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
-use user::{SecureLogConfig, UserDatabaseConfig, UserManager};
+use user::{SecureLogConfig, SessionConfig, UserDatabaseConfig, UserManager};
 
 /// Environment paths configuration
 #[derive(Debug, Clone)]
@@ -437,7 +437,30 @@ pub fn run() {
                             },
                         };
 
-                        match UserManager::new(user_db_config).await {
+                        // Get session configuration from system config
+                        let session_config = SessionConfig {
+                            cookie_name: config_access::get_system_string("session.cookie_name")
+                                .unwrap_or_else(|| "marain_session".to_string()),
+                            timeout_seconds: config_access::get_system_i64(
+                                "session.timeout_seconds",
+                            )
+                            .unwrap_or(86400), // 24 hours default
+                            secure: config_access::get_system_bool("session.secure")
+                                .unwrap_or(false), // Set to true in production
+                            same_site: user::SameSiteConfig::Lax,
+                            http_only: config_access::get_system_bool("session.http_only")
+                                .unwrap_or(true),
+                            secret_key: {
+                                // In production, load from secure configuration
+                                // For now, generate a random key
+                                let mut key = vec![0u8; 32];
+                                use rand::RngCore;
+                                rand::thread_rng().fill_bytes(&mut key);
+                                key
+                            },
+                        };
+
+                        match UserManager::new(user_db_config, session_config).await {
                             Ok(manager) => {
                                 tracing::info!("User management system initialized successfully");
                                 Arc::new(manager)
@@ -465,7 +488,7 @@ pub fn run() {
                             secure_log_config: SecureLogConfig::default(),
                         };
                         Arc::new(
-                            UserManager::new(temp_config)
+                            UserManager::new(temp_config, SessionConfig::default())
                                 .await
                                 .expect("Failed to create disabled user manager"),
                         )

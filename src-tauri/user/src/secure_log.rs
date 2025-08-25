@@ -133,6 +133,11 @@ pub struct SecureLogger {
 }
 
 impl SecureLogger {
+    /// Get the genesis hash used for the first log entry
+    fn genesis_hash() -> String {
+        String::from("0000000000000000000000000000000000000000000000000000000000000000")
+    }
+
     /// Create a new secure logger
     pub fn new(config: SecureLogConfig) -> Result<Self> {
         // Ensure the directory exists
@@ -145,7 +150,7 @@ impl SecureLogger {
             Self::get_last_hash(&config.log_path)?
         } else {
             // Genesis hash for the first entry
-            String::from("0000000000000000000000000000000000000000000000000000000000000000")
+            Self::genesis_hash()
         };
 
         Ok(Self {
@@ -303,8 +308,8 @@ impl SecureLogger {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
 
-        let mut last_hash =
-            String::from("0000000000000000000000000000000000000000000000000000000000000000");
+        // Start with genesis hash as default
+        let mut last_hash = Self::genesis_hash();
 
         for line in reader.lines().map_while(|r| r.ok()) {
             if let Ok(entry) = serde_json::from_str::<SecureLogEntry>(&line) {
@@ -324,9 +329,9 @@ impl SecureLogger {
         let file = File::open(&self.config.log_path)?;
         let reader = BufReader::new(file);
 
-        let mut expected_previous_hash =
-            String::from("0000000000000000000000000000000000000000000000000000000000000000");
+        let mut expected_previous_hash: Option<String> = None;
         let mut line_number = 0;
+        let mut is_first_entry = true;
 
         for line in reader.lines() {
             line_number += 1;
@@ -346,15 +351,29 @@ impl SecureLogger {
             }
 
             // Verify the chain
-            if entry.previous_hash != expected_previous_hash {
-                error!(
-                    "Chain verification failed at line {}: expected_previous={}, got={}",
-                    line_number, expected_previous_hash, entry.previous_hash
-                );
-                return Ok(false);
+            if is_first_entry {
+                // First entry should have genesis hash as previous
+                if entry.previous_hash != Self::genesis_hash() {
+                    error!(
+                        "First entry doesn't have genesis hash: expected={}, got={}",
+                        Self::genesis_hash(),
+                        entry.previous_hash
+                    );
+                    return Ok(false);
+                }
+                is_first_entry = false;
+            } else if let Some(ref expected) = expected_previous_hash {
+                // Subsequent entries should chain properly
+                if entry.previous_hash != *expected {
+                    error!(
+                        "Chain verification failed at line {}: expected_previous={}, got={}",
+                        line_number, expected, entry.previous_hash
+                    );
+                    return Ok(false);
+                }
             }
 
-            expected_previous_hash = entry.entry_hash;
+            expected_previous_hash = Some(entry.entry_hash.clone());
         }
 
         info!(
@@ -407,7 +426,7 @@ mod tests {
             None,
             Some("192.168.1.1".to_string()),
             "success".to_string(),
-            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            SecureLogger::genesis_hash(),
         );
 
         assert!(entry.verify_hash());
