@@ -1,9 +1,12 @@
 //! SQLx session store implementation for tower-sessions
 
+use std::env;
+
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tower_sessions_sqlx_store::SqliteStore;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::error::{Result, UserError};
 
@@ -99,22 +102,91 @@ pub struct SessionConfig {
     pub secret_key: Vec<u8>,
 }
 
-impl Default for SessionConfig {
-    fn default() -> Self {
-        // Generate a random 32-byte key for development
-        // In production, this should be loaded from configuration
-        let mut secret_key = vec![0u8; 32];
-        use rand::RngCore;
-        rand::thread_rng().fill_bytes(&mut secret_key);
-
-        Self {
+impl SessionConfig {
+    /// Load session configuration, prioritizing environment variables
+    pub fn new() -> Result<Self> {
+        let secret_key = Self::load_secret_key()?;
+        Ok(Self {
             cookie_name: "marain_session".to_string(),
             timeout_seconds: 86400, // 24 hours
             secure: false,          // Set to true in production with HTTPS
             same_site: SameSiteConfig::Lax,
             http_only: true,
             secret_key,
+        })
+    }
+
+    /// Load the session secret key from the appropriate source
+    fn load_secret_key() -> Result<Vec<u8>> {
+        let env = env::var("ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+        match env.as_str() {
+            "dev" | "test" => Self::load_from_env(),
+            "prd" => {
+                // Determine which secret manager to use
+                if env::var("AWS_SECRETS_MANAGER_SECRET_ID").is_ok() {
+                    Self::load_from_aws_secrets_manager()
+                } else if env::var("VAULT_ADDR").is_ok() {
+                    Self::load_from_vault()
+                } else {
+                    Self::load_from_env() // Fallback for production-like local setup
+                }
+            }
+            _ => Self::load_from_env(),
         }
+    }
+
+    /// Load secret key from .env file (for local development)
+    fn load_from_env() -> Result<Vec<u8>> {
+        let key_str = env::var("SESSION_SECRET_KEY")
+            .map_err(|_| UserError::Configuration("SESSION_SECRET_KEY not set".to_string()))?;
+
+        BASE64
+            .decode(key_str.as_bytes())
+            .map_err(|e| UserError::Configuration(format!("Invalid BASE64 secret key: {}", e)))
+    }
+
+    /// Load secret key from AWS Secrets Manager (stub)
+    fn load_from_aws_secrets_manager() -> Result<Vec<u8>> {
+        warn!("AWS Secrets Manager not yet implemented. Falling back to .env file for now.");
+        // In a real implementation:
+        // 1. Use the AWS SDK for Rust (`aws-sdk-secretsmanager`)
+        // 2. Get the secret value using the `AWS_SECRETS_MANAGER_SECRET_ID` env var
+        // 3. Decode the base64 secret
+        // For now, we just fall back.
+        Self::load_from_env()
+    }
+
+    /// Load secret key from HashiCorp Vault (stub)
+    fn load_from_vault() -> Result<Vec<u8>> {
+        warn!("HashiCorp Vault not yet implemented. Falling back to .env file for now.");
+        // In a real implementation:
+        // 1. Use a Vault client library for Rust
+        // 2. Authenticate with Vault using env vars (`VAULT_ADDR`, `VAULT_TOKEN`)
+        // 3. Read the secret from the configured path
+        // 4. Decode the base64 secret
+        // For now, we just fall back.
+        Self::load_from_env()
+    }
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self::new().unwrap_or_else(|e| {
+            warn!("Failed to load session config: {}. Using random key.", e);
+            // Fallback for cases where .env is missing during tests/initial setup
+            let mut secret_key = vec![0u8; 32];
+            use rand::RngCore;
+            rand::thread_rng().fill_bytes(&mut secret_key);
+
+            Self {
+                cookie_name: "marain_session".to_string(),
+                timeout_seconds: 86400,
+                secure: false,
+                same_site: SameSiteConfig::Lax,
+                http_only: true,
+                secret_key,
+            }
+        })
     }
 }
 
@@ -175,12 +247,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_config_default() {
-        let config = SessionConfig::default();
+        // Create a dummy .env file for the test
+        let key = "test_secret_key_123456789012345678901234";
+        let b64_key = BASE64.encode(key.as_bytes());
+        std::env::set_var("SESSION_SECRET_KEY", &b64_key);
+
+        let config = SessionConfig::new().unwrap();
 
         assert_eq!(config.cookie_name, "marain_session");
         assert_eq!(config.timeout_seconds, 86400);
         assert!(!config.secure);
         assert!(config.http_only);
-        assert_eq!(config.secret_key.len(), 32);
+        assert_eq!(config.secret_key, key.as_bytes());
+
+        std::env::remove_var("SESSION_SECRET_KEY");
     }
 }

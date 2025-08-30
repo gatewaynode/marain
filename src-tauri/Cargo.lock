@@ -6239,6 +6239,7 @@ dependencies = [
  "axum-login",
  "base64 0.22.1",
  "chrono",
+ "dotenvy",
  "hex",
  "lettre",
  "rand 0.8.5",

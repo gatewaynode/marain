@@ -53,11 +53,7 @@ impl UserManager {
 
     /// Create a new user manager with default configuration
     pub async fn new_default() -> error::Result<Self> {
-        Self::new(
-            database::UserDatabaseConfig::default(),
-            SessionConfig::default(),
-        )
-        .await
+        Self::new(database::UserDatabaseConfig::default(), SessionConfig::new()?).await
     }
 
     /// Get a reference to the database
@@ -123,6 +119,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_user_manager_creation() {
+        // Ensure .env file is loaded for tests
+        dotenvy::dotenv().ok();
+
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test_user.db");
         let log_path = temp_dir.path().join("test_secure.log");
@@ -139,9 +138,10 @@ mod tests {
             },
         };
 
-        let manager = UserManager::new(config, SessionConfig::default())
+        let manager = UserManager::new(config, SessionConfig::new().unwrap())
             .await
             .unwrap();
+
 
         // Verify integrity
         assert!(manager.verify_integrity().await.unwrap());

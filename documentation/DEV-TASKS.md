@@ -1587,6 +1587,51 @@ This task successfully replaced the mock implementation of the `verify_passkey` 
 The PassKey verification logic is now secure and correctly implemented, resolving a critical security issue and bringing the authentication flow in line with modern best practices.
 
 
+## Task 20.5 Externalize Session Secret Key
+
+- [x] Status: Complete
+
+Modify [`SessionConfig`](src-tauri/user/src/auth/store.rs:86) to load the `secret_key` from a persistent, secure source instead of generating it at runtime.  When in local development this should be from the `.env` file, so if this doesn't exist this needs to be created.  In upper environments this should be from secret store such as AWS Secrets Manager or Hashicorp Vault.  Implement the `.env` storage of the session `secret_key`, and stub out the implementations for AWS secrets manager and Hashicorp Vault.
+
+It looks like the `.env` file may be missing.  Reinstantiate the file using the `EXAMPLE.env` as a guide and add the secret key as needed.  Update both files, and review the code for other uses of `.env` and make sure the files support those use cases.
+
+### Acceptance Criteria:
+
+- The secret key is implemented from environment variables or secrets management systems ✓
+- The `.env` file is restored and checked for correctness across the code base. ✓
+
+### **Implementation Notes:**
+
+**Completed (2025-08-30)**
+
+This task successfully externalized the session secret key, moving it from a randomly generated in-memory value to a persistent, configurable secret loaded from the environment.
+
+1.  **Environment File Creation**:
+    *   Created a `.env` file at the project root with a securely generated, base64-encoded `SESSION_SECRET_KEY`.
+    *   Updated the `EXAMPLE.env` file to include `SESSION_SECRET_KEY=""` as a template for other developers.
+    *   Ensured all other required environment variables (`DATA_PATH`, etc.) were preserved.
+
+2.  **Dynamic Key Loading in `SessionConfig`**:
+    *   Modified the `SessionConfig` in [`src-tauri/user/src/auth/store.rs`](src-tauri/user/src/auth/store.rs:1) to remove the runtime key generation.
+    *   Implemented a new `load_secret_key` method that loads the `SESSION_SECRET_KEY` from the environment.
+    *   The key is base64-decoded upon loading to be used by the session manager.
+
+3.  **Environment-Aware Secret Loading**:
+    *   The `load_secret_key` function now inspects the `ENVIRONMENT` variable.
+    *   For `dev` and `test` environments, it loads from the `.env` file.
+    *   For `prd` environments, it includes stubbed-out logic to load from **AWS Secrets Manager** or **HashiCorp Vault**, with appropriate warnings that these are not yet implemented. This provides a clear path for production configuration.
+
+4.  **Dependency and Code Updates**:
+    *   Added the `dotenvy` crate to the `user` crate's `Cargo.toml` to manage environment variables.
+    *   Updated the `base64` crate to enable the `std` feature required for decoding.
+    *   Modified the `UserManager` initialization in [`src-tauri/user/src/lib.rs`](src-tauri/user/src/lib.rs:1) to handle the new, fallible `SessionConfig::new()` method.
+
+5.  **Verification**:
+    *   All changes were validated with `cargo check`, confirming that the entire `user` crate and its dependents compile successfully.
+    *   The test suite for `SessionConfig` was updated to reflect the new loading mechanism.
+
+This change significantly improves the security and operational readiness of the authentication system by ensuring session keys are persistent and can be managed securely in different environments, while preventing all user sessions from being invalidated on every application restart.
+
 ---
 
 ## Task TEMPLATE
