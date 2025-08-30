@@ -18,6 +18,7 @@
 - `scripts/`, `build/`: Helper scripts, and build output.
 
 ## Build, Test, and Development Commands
+- The public repository location is `github.com/gatewaynode/marain`
 - Dev (desktop): `bun run tauri dev` — launches the Tauri app.
 - Dev (web only): `bun run dev` — Vite dev server for UI.
 - Build (desktop): `bun run tauri build` — production bundle.

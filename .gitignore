@@ -44,3 +44,5 @@ src-tauri/*/data/logs/
 # IDE's and such
 .vscode
 .vscode/*
+.kilocode
+.kilocode/*

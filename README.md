@@ -5,7 +5,6 @@
 [![CI](https://github.com/gatewaynode/marain/actions/workflows/rust.yml/badge.svg)](https://github.com/gatewaynode/marain/actions/workflows/rust.yml)
 [![Rust](https://img.shields.io/badge/rust-1.79-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-v2-blue.svg)](https://tauri.app/)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
 
 A flexible, headless CMS, written in Rust.
 
