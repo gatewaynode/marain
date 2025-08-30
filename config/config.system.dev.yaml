@@ -54,3 +54,35 @@ values:
     max_rotations: 10  # Number of rotated log files to keep
     enable_verification: true  # Enable cryptographic hash verification
     rotation_check_interval: 300  # Check for rotation every 5 minutes (seconds)
+  
+  # WebAuthn configuration for PassKey authentication
+  webauthn:
+    rp_id: "localhost"
+    rp_name: "Marain CMS"
+    rp_origin: "http://localhost:3043"
+    timeout_ms: 60000
+    attestation: "none"  # none, indirect, or direct
+    user_verification: "preferred"  # required, preferred, or discouraged
+    
+  # Session configuration
+  session:
+    cookie_name: "marain_session"
+    timeout_seconds: 86400  # 24 hours
+    secure: false  # Set to true in production with HTTPS
+    same_site: "lax"  # strict, lax, or none
+    http_only: true
+    
+  # Magic link email configuration
+  magic_link:
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_username: ""  # Set via environment variable SMTP_USERNAME
+    smtp_password: ""  # Set via environment variable SMTP_PASSWORD
+    from_email: "noreply@marain.local"
+    from_name: "Marain CMS"
+    token_expiry_minutes: 15
+    email_template: |
+      <h2>Your Magic Link</h2>
+      <p>Click the link below to sign in to Marain CMS:</p>
+      <p><a href="{link}">{link}</a></p>
+      <p>This link will expire in 15 minutes.</p>
