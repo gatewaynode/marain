@@ -118,31 +118,33 @@ impl SessionConfig {
 
     /// Load the session secret key from the appropriate source
     fn load_secret_key() -> Result<Vec<u8>> {
-        let env = env::var("ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
-        match env.as_str() {
-            "dev" | "test" => Self::load_from_env(),
-            "prd" => {
-                // Determine which secret manager to use
-                if env::var("AWS_SECRETS_MANAGER_SECRET_ID").is_ok() {
-                    Self::load_from_aws_secrets_manager()
-                } else if env::var("VAULT_ADDR").is_ok() {
-                    Self::load_from_vault()
-                } else {
-                    Self::load_from_env() // Fallback for production-like local setup
-                }
+        // First, try loading from the environment. This covers .env files locally
+        // and secrets provided by the CI environment (e.g., GitHub Actions secrets).
+        if let Ok(key_str) = env::var("SESSION_SECRET_KEY") {
+            if !key_str.is_empty() {
+                return BASE64.decode(key_str.as_bytes()).map_err(|e| {
+                    UserError::Configuration(format!("Invalid BASE64 secret key from env: {}", e))
+                });
             }
-            _ => Self::load_from_env(),
         }
-    }
 
-    /// Load secret key from .env file (for local development)
-    fn load_from_env() -> Result<Vec<u8>> {
-        let key_str = env::var("SESSION_SECRET_KEY")
-            .map_err(|_| UserError::Configuration("SESSION_SECRET_KEY not set".to_string()))?;
+        // If not in the environment, check for production secret managers.
+        let env = env::var("ENVIRONMENT").unwrap_or_else(|_| "dev".to_string());
+        if env == "prd" {
+            if env::var("AWS_SECRETS_MANAGER_SECRET_ID").is_ok() {
+                return Self::load_from_aws_secrets_manager();
+            }
+            if env::var("VAULT_ADDR").is_ok() {
+                return Self::load_from_vault();
+            }
+        }
 
-        BASE64
-            .decode(key_str.as_bytes())
-            .map_err(|e| UserError::Configuration(format!("Invalid BASE64 secret key: {}", e)))
+        // If no other method works, return an error. The default() implementation
+        // will handle this by generating a temporary key for local/test convenience.
+        Err(UserError::Configuration(
+            "SESSION_SECRET_KEY not found in .env, GitHub secrets, or any configured secret manager."
+                .to_string(),
+        ))
     }
 
     /// Load secret key from AWS Secrets Manager (stub)
@@ -153,7 +155,9 @@ impl SessionConfig {
         // 2. Get the secret value using the `AWS_SECRETS_MANAGER_SECRET_ID` env var
         // 3. Decode the base64 secret
         // For now, we just fall back.
-        Self::load_from_env()
+        Err(UserError::Configuration(
+            "AWS Secrets Manager not implemented".to_string(),
+        ))
     }
 
     /// Load secret key from HashiCorp Vault (stub)
@@ -165,7 +169,9 @@ impl SessionConfig {
         // 3. Read the secret from the configured path
         // 4. Decode the base64 secret
         // For now, we just fall back.
-        Self::load_from_env()
+        Err(UserError::Configuration(
+            "HashiCorp Vault not implemented".to_string(),
+        ))
     }
 }
 
