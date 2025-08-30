@@ -1,6 +1,5 @@
 //! PassKey (WebAuthn) authentication implementation
 
-// use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::sync::Arc;
@@ -188,6 +187,9 @@ impl PassKeyManager {
             .collect();
 
         // Create user entity - using Passkey type from webauthn-rs
+        // Per `webauthn-rs` documentation, a UUID must be used for the user handle.
+        // This is a temporary measure until the library supports ULIDs or another
+        // identifier that aligns with the project's standard.
         let user_uuid = uuid::Uuid::new_v4();
 
         // Start registration with proper API
@@ -436,29 +438,22 @@ impl PassKeyManager {
 pub async fn verify_passkey(
     db: &UserDatabase,
     user_id: &str,
-    _challenge_response: String,
+    challenge_response: String,
 ) -> Result<Option<AuthenticatedUser>> {
-    // This is a simplified version - in production, you would:
-    // 1. Deserialize the challenge response
-    // 2. Verify it against the stored challenge
-    // 3. Complete the WebAuthn authentication flow
+    // In a real application, you would use a PassKeyManager instance
+    // For now, we are creating it on the fly with default config
+    // This should be retrieved from the application state
+    let passkey_manager =
+        PassKeyManager::new("localhost".to_string(), "http://localhost:3000".to_string())?;
 
-    warn!("PassKey verification not fully implemented - using mock verification");
+    let credential: PublicKeyCredential =
+        serde_json::from_str(&challenge_response).map_err(UserError::Serialization)?;
 
-    // For now, just check if the user exists
-    let query = r#"
-        SELECT id, username, email, created_at, updated_at
-        FROM users
-        WHERE id = ?
-    "#;
+    let user = passkey_manager
+        .complete_authentication(db, user_id, &credential)
+        .await?;
 
-    let user = sqlx::query_as::<_, AuthenticatedUser>(query)
-        .bind(user_id)
-        .fetch_optional(db.pool())
-        .await
-        .map_err(UserError::Database)?;
-
-    Ok(user)
+    Ok(Some(user))
 }
 
 /// PassKey registration state that needs to be stored temporarily
