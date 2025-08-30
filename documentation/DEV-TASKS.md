@@ -1634,6 +1634,47 @@ This change significantly improves the security and operational readiness of the
 
 ---
 
+## Task 20.6 Fix CI Test Failure for Missing SESSION_SECRET_KEY
+
+- [x] Status: Complete
+
+Fix the test failure in CI where `test_user_manager_creation` panics because `SESSION_SECRET_KEY` is not available in the GitHub Actions environment.
+
+### Acceptance Criteria:
+
+- The test passes in CI without requiring SESSION_SECRET_KEY to be set ✓
+- The fix maintains test integrity and doesn't compromise security ✓
+- All other tests continue to pass ✓
+
+### **Implementation Notes:**
+
+**Completed (2025-08-30)**
+
+This task fixed a CI failure where the `test_user_manager_creation` test was panicking because it couldn't find the `SESSION_SECRET_KEY` environment variable in the GitHub Actions environment.
+
+**Root Cause:**
+- The test was using `SessionConfig::new().unwrap()` which returns an error when SESSION_SECRET_KEY is not found
+- In CI environments, the `.env` file doesn't exist and no SESSION_SECRET_KEY is set
+- The `unwrap()` caused a panic with the error: "SESSION_SECRET_KEY not found in .env, GitHub secrets, or any configured secret manager."
+
+**Solution Implemented:**
+- Changed the test to use `SessionConfig::default()` instead of `SessionConfig::new().unwrap()`
+- The `default()` implementation gracefully handles missing SESSION_SECRET_KEY by generating a random key for testing purposes
+- This approach is appropriate for tests as they don't need persistent session keys
+
+**Changes Made:**
+- Modified [`src-tauri/user/src/lib.rs`](src-tauri/user/src/lib.rs:141) test to use `SessionConfig::default()`
+- Added comment explaining why default() is used for testing
+
+**Verification:**
+- Test passes locally with SESSION_SECRET_KEY set
+- Test passes locally without SESSION_SECRET_KEY (simulating CI environment)
+- All 17 tests in the user crate continue to pass
+
+This fix ensures that tests can run in CI environments without requiring secret configuration, while production code still properly validates the presence of SESSION_SECRET_KEY.
+
+---
+
 ## Task TEMPLATE
 
 - [ ] Status: Implementation Design
