@@ -2,6 +2,10 @@
 
 **EXPERIMENTAL!** Please do not use this for anything important yet.
 
+[![CI](https://github.com/gatewaynode/marain/actions/workflows/rust.yml/badge.svg)](https://github.com/gatewaynode/marain/actions/workflows/rust.yml)
+[![Rust](https://img.shields.io/badge/rust-1.79-orange.svg)](https://www.rust-lang.org/)
+[![Tauri](https://img.shields.io/badge/tauri-v2-blue.svg)](https://tauri.app/)
+
 A flexible, headless CMS, written in Rust.
 
 ## Background
@@ -28,7 +32,6 @@ All that said.  After I figured out how to work with the two models I ended up u
 - [x] Centralized content management features and functions in the `content` crate
 - [x] User management with the `user` crate with separation of sensitive user data
 - [ ] User profiles as entities
-- [ ] Isolated secure user sensitive data store
 - [ ] Implement work queue persistence layer
 - [ ] Implement the event broadcast bus using `tokio::sync::broadcast`
 - [ ] Implemeent the cron event signaler with system configuration
@@ -51,3 +54,49 @@ This is a Tauri project, but I've been focused on the headless backend.  I'm not
 Working on the project assumes you have some knowledge of Tauri, Svelte5, Rust, and Cargo workspaces.  Using an LLM that has those prerequsites instead of you yourself is a bad idea.  That said I don't mind LLM generated code, but please write the PR comment yourself.
 
 If you are going to use an LLM for PRs make sure you have them read the `documentation/*` files and the `AGENTS.md` as context in the beginning of your prompt.  Update documentation and add tests.
+
+## 🚀 Getting Started
+
+This project uses `bun` for the frontend and `cargo` for the Rust backend.
+
+### Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
+- [Bun](https://bun.sh/docs/installation)
+- Platform-specific dependencies for Tauri (see the [Tauri documentation](https://tauri.app/v1/guides/getting-started/prerequisites))
+
+### Running the Application
+
+1.  **Clone the repository:**
+    ```sh
+    git clone https://github.com/mhenderson-so/marain-cms.git
+    cd marain-cms
+    ```
+
+2.  **Install frontend dependencies:**
+    ```sh
+    bun install
+    ```
+
+3.  **Create your environment file:**
+    Copy the `EXAMPLE.env` file to `.env` and generate a session secret key.
+    ```sh
+    cp EXAMPLE.env .env
+    # On macOS/Linux
+    NEW_KEY=$(openssl rand -base64 32)
+    echo "SESSION_SECRET_KEY=\"$NEW_KEY\"" >> .env
+    ```
+
+4.  **Run the Tauri development server:**
+    This command will build and launch the desktop application with hot-reloading for both the frontend and backend.
+    ```sh
+    bun run tauri dev
+    ```
+
+### Running in Web-Only Mode
+
+If you only want to work on the Svelte UI without launching the Tauri desktop application, you can run the Vite development server directly:
+
+```sh
+bun run dev
+```

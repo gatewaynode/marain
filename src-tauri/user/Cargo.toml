@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Use vendored OpenSSL to avoid system dependency issues
+openssl = { workspace = true }
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "migrate"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "migrate", "chrono"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -28,9 +31,38 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # UUID/ULID
 ulid = "1.1"
+uuid = { version = "1.17", features = ["v4"] }
 
 # File operations
 tokio-fs = "0.1"
+
+# Environment variables
+dotenvy = "0.15"
+
+# Authentication & Sessions
+axum = { version = "0.7", features = ["macros"] }
+axum-login = "0.16"
+tower = "0.5"
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.14", features = ["sqlite"] }
+async-trait = "0.1"
+
+# URL encoding
+urlencoding = "2.1"
+
+# Password hashing (for future use)
+argon2 = "0.5"
+
+# WebAuthn for PassKeys
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+webauthn-rs-proto = "0.5"
+
+# Email for magic links
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
+
+# Random token generation
+rand = "0.8"
+base64 = { version = "0.22", features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3.8"
