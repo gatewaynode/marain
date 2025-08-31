@@ -10,6 +10,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Use vendored OpenSSL to avoid system dependency issues
+  OPENSSL_STATIC: 1
+  OPENSSL_VENDOR: 1
 
 jobs:
   # Check formatting first as it's quick
@@ -110,9 +113,7 @@ jobs:
         run: |
           brew install gtk+3 openssl
       
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install openssl
+      # Windows doesn't need OpenSSL installation with vendored feature
 
       # Cache dependencies
       - name: Cache cargo registry
@@ -234,9 +235,7 @@ jobs:
         run: |
           brew install gtk+3
       
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install openssl
+      # Windows doesn't need OpenSSL installation with vendored feature
 
       # Cache dependencies
       - name: Cache cargo registry

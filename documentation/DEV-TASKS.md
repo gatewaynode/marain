@@ -1675,6 +1675,59 @@ This fix ensures that tests can run in CI environments without requiring secret 
 
 ---
 
+## Task 20.7: Fix CI Build Failures - OpenSSL Dependency Issues
+
+**Date**: 2025-08-31
+**Status**: Completed
+
+### Problem
+The CI builds were failing on Windows and macOS with OpenSSL-related errors:
+- Windows: "error: failed to run custom build command for `openssl-sys`"
+- macOS: Cross-compilation issues with OpenSSL linking
+- The webauthn-rs v0.5 dependency was pulling in OpenSSL as a transitive dependency
+
+### Root Cause
+The build process was trying to link against system-installed OpenSSL, which:
+- Wasn't available on Windows CI runners
+- Had version/architecture mismatches on macOS
+- Created platform-specific build complexity
+
+### Solution
+Implemented OpenSSL vendoring to bundle OpenSSL with the build instead of relying on system installations:
+
+1. **Added vendored OpenSSL to workspace** (`src-tauri/Cargo.toml`):
+   ```toml
+   openssl = { version = "0.10", features = ["vendored"] }
+   ```
+
+2. **Added OpenSSL dependency to affected crates**:
+   - `src-tauri/user/Cargo.toml`: Added `openssl = { workspace = true }`
+   - `src-tauri/api/Cargo.toml`: Added `openssl = { workspace = true }`
+
+3. **Updated CI workflow** (`.github/workflows/rust.yml`):
+   - Added environment variables: `OPENSSL_STATIC=1` and `OPENSSL_VENDOR=1`
+   - Removed OpenSSL installation steps for Windows
+   - Simplified macOS dependencies (removed OpenSSL installation)
+
+### Benefits
+- **Cross-platform compatibility**: Builds work consistently across Linux, Windows, and macOS
+- **No system dependencies**: Eliminates OpenSSL version conflicts
+- **Simplified CI**: No need to install OpenSSL on CI runners
+- **Reproducible builds**: Same OpenSSL version bundled everywhere
+
+### Verification
+- Local tests pass on all platforms
+- CI builds should now succeed without OpenSSL installation steps
+- The vendored approach ensures consistent behavior across environments
+
+### Files Modified
+- `src-tauri/Cargo.toml`: Added workspace OpenSSL dependency
+- `src-tauri/user/Cargo.toml`: Added OpenSSL dependency
+- `src-tauri/api/Cargo.toml`: Added OpenSSL dependency
+- `.github/workflows/rust.yml`: Updated with vendoring environment variables
+
+---
+
 ## Task TEMPLATE
 
 - [ ] Status: Implementation Design
