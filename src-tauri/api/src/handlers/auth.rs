@@ -88,12 +88,13 @@ pub async fn passkey_register_start(
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("User manager not initialized".to_string()))?;
 
-    // Get the PassKey manager
-    let passkey_manager = PassKeyManager::new(
-        "localhost".to_string(),             // TODO: Get from config
-        "http://localhost:3030".to_string(), // TODO: Get from config
-    )
-    .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
+    // Get the PassKey manager with configuration from system config
+    // TODO: Get these values from actual configuration once WebAuthn config is added
+    let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
+    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:3030".to_string());
+    
+    let passkey_manager = PassKeyManager::new(rp_id, rp_origin)
+        .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
 
     // Start registration
     let (challenge_id, options) = passkey_manager
@@ -129,12 +130,13 @@ pub async fn passkey_register_finish(
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("User manager not initialized".to_string()))?;
 
-    // Get the PassKey manager
-    let passkey_manager = PassKeyManager::new(
-        "localhost".to_string(),             // TODO: Get from config
-        "http://localhost:3030".to_string(), // TODO: Get from config
-    )
-    .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
+    // Get the PassKey manager with configuration from system config
+    // TODO: Get these values from actual configuration once WebAuthn config is added
+    let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
+    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:3030".to_string());
+    
+    let passkey_manager = PassKeyManager::new(rp_id, rp_origin)
+        .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
 
     // Complete registration
     passkey_manager
@@ -171,12 +173,13 @@ pub async fn passkey_login_start(
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("User manager not initialized".to_string()))?;
 
-    // Get the PassKey manager
-    let passkey_manager = PassKeyManager::new(
-        "localhost".to_string(),             // TODO: Get from config
-        "http://localhost:3030".to_string(), // TODO: Get from config
-    )
-    .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
+    // Get the PassKey manager with configuration from system config
+    // TODO: Get these values from actual configuration once WebAuthn config is added
+    let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
+    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:3030".to_string());
+    
+    let passkey_manager = PassKeyManager::new(rp_id, rp_origin)
+        .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
 
     // Start authentication
     let (challenge_id, options) = passkey_manager
@@ -213,12 +216,13 @@ pub async fn passkey_login_finish(
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("User manager not initialized".to_string()))?;
 
-    // Get the PassKey manager
-    let passkey_manager = PassKeyManager::new(
-        "localhost".to_string(),             // TODO: Get from config
-        "http://localhost:3030".to_string(), // TODO: Get from config
-    )
-    .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
+    // Get the PassKey manager with configuration from system config
+    // TODO: Get these values from actual configuration once WebAuthn config is added
+    let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
+    let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| "http://localhost:3030".to_string());
+    
+    let passkey_manager = PassKeyManager::new(rp_id, rp_origin)
+        .map_err(|e| ApiError::InternalError(format!("Failed to create PassKey manager: {}", e)))?;
 
     // Complete authentication
     let user = passkey_manager
