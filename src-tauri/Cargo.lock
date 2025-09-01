@@ -2935,6 +2935,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
+name = "marain-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api",
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "colored",
+ "database",
+ "dotenv",
+ "predicates",
+ "reqwest",
+ "schema-manager",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "marain-cms"
 version = "0.1.0"
 dependencies = [
@@ -2956,30 +2980,6 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "user",
-]
-
-[[package]]
-name = "marc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "api",
- "assert_cmd",
- "chrono",
- "clap",
- "colored",
- "database",
- "dotenv",
- "predicates",
- "reqwest",
- "schema-manager",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

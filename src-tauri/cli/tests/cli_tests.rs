@@ -158,7 +158,7 @@ fn test_health_command_json() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["health", "--format", "json"])
+        .args(["health", "--format", "json"])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"status\""))
@@ -172,7 +172,7 @@ fn test_config_list_text() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "list"])
+        .args(["config", "list"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Marain Configuration"))
@@ -186,7 +186,7 @@ fn test_config_list_json() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "list", "--format", "json"])
+        .args(["config", "list", "--format", "json"])
         .assert()
         .success()
         .stdout(predicate::str::contains("{"))
@@ -200,7 +200,7 @@ fn test_config_list_yaml() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "list", "--format", "yaml"])
+        .args(["config", "list", "--format", "yaml"])
         .assert()
         .success();
 }
@@ -212,7 +212,7 @@ fn test_config_get_valid_path() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "get", "system.database.path"])
+        .args(["config", "get", "system.database.path"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Configuration Value"))
@@ -226,7 +226,7 @@ fn test_config_get_invalid_path() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "get", "invalid.path"])
+        .args(["config", "get", "invalid.path"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not found"));
@@ -239,7 +239,7 @@ fn test_config_get_json_format() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["config", "get", "system.api.port", "--format", "json"])
+        .args(["config", "get", "system.api.port", "--format", "json"])
         .assert()
         .success()
         .stdout(predicate::str::contains("3030"));
@@ -252,7 +252,7 @@ fn test_verbose_flag() {
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(project_dir.path())
-        .args(&["--verbose", "health"])
+        .args(["--verbose", "health"])
         .assert()
         .success();
 }
@@ -262,13 +262,13 @@ fn test_subcommand_help() {
     setup_test_env();
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
-    cmd.args(&["config", "--help"])
+    cmd.args(["config", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Configuration management"));
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
-    cmd.args(&["health", "--help"])
+    cmd.args(["health", "--help"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Check system health"));
@@ -329,7 +329,7 @@ values:
 
     let mut cmd = Command::cargo_bin("marc").unwrap();
     cmd.current_dir(root)
-        .args(&["config", "get", "system.test"])
+        .args(["config", "get", "system.test"])
         .assert()
         .success()
         .stdout(predicate::str::contains("custom"));
