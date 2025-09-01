@@ -48,5 +48,6 @@
 
 ## Documentation
 - The documentation in `/documentation/` is always updated if the implementation changes any details
+- The `/documentation/REST-API/openapi.json` file should always be kept up to date
 - The **Implementation Notes** is always where we store the task completion summary in the `/documentation/DEV-TASKS.md` file
 

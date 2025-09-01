@@ -1,0 +1,676 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Marain CMS API",
+        "description": "RESTful API for Marain CMS",
+        "contact": {
+            "name": "Marain CMS Team"
+        },
+        "license": {
+            "name": ""
+        },
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/v1/entity/create/{entity_type}": {
+            "post": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "Create a new entity",
+                "description": "POST /api/v1/entity/create/{entity_type}",
+                "operationId": "create_entity",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity to create",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateEntityRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Entity created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EntityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/delete/{entity_type}/{content_id}": {
+            "post": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "Delete an entity",
+                "description": "POST /api/v1/entity/delete/{entity_type}/{content_id}",
+                "operationId": "delete_entity",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "content_id",
+                        "in": "path",
+                        "description": "ID of entity to delete",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entity deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeleteResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Entity not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/list/{entity_type}": {
+            "get": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "List entities of a specific type with pagination",
+                "description": "GET /api/v1/entity/list/{entity_type}",
+                "operationId": "list_entities",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity to list",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number (default: 1)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "description": "Items per page (default: 20)",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entities listed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EntityListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entity type",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/read/{entity_type}/{content_id}": {
+            "get": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "Read a single entity by ID",
+                "description": "GET /api/v1/entity/read/{entity_type}/{content_id}",
+                "operationId": "read_entity",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity (e.g., snippet, all_fields, multi)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "content_id",
+                        "in": "path",
+                        "description": "Unique identifier of the content",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entity retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EntityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Entity not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/update/{entity_type}/{content_id}": {
+            "post": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "Update an existing entity",
+                "description": "POST /api/v1/entity/update/{entity_type}/{content_id}",
+                "operationId": "update_entity",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "content_id",
+                        "in": "path",
+                        "description": "ID of entity to update",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateEntityRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Entity updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EntityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Entity not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/version/list/{entity_type}/{content_id}": {
+            "get": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "List all revisions for an entity",
+                "description": "GET /api/v1/entity/version/list/{entity_type}/{content_id}",
+                "operationId": "list_entity_versions",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "content_id",
+                        "in": "path",
+                        "description": "Unique identifier of the content",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Revisions listed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "integer",
+                                        "format": "int64"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Entity is not versioned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Entity not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/entity/version/read/{entity_type}/{content_id}/{version_id}": {
+            "get": {
+                "tags": [
+                    "entities"
+                ],
+                "summary": "Read a specific revision of an entity",
+                "description": "GET /api/v1/entity/version/read/{entity_type}/{content_id}/{version_id}",
+                "operationId": "read_entity_version",
+                "parameters": [
+                    {
+                        "name": "entity_type",
+                        "in": "path",
+                        "description": "Type of entity (e.g., snippet, all_fields, multi)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "content_id",
+                        "in": "path",
+                        "description": "Unique identifier of the content",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "version_id",
+                        "in": "path",
+                        "description": "Revision ID to retrieve",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entity revision retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EntityResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Entity is not versioned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Entity or revision not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/health": {
+            "get": {
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check endpoint",
+                "description": "GET /api/v1/health",
+                "operationId": "health_check",
+                "responses": {
+                    "200": {
+                        "description": "Service is healthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HealthResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service is unhealthy",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HealthResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "ApiErrorResponse": {
+                "type": "object",
+                "description": "Error response structure for OpenAPI documentation",
+                "required": [
+                    "error"
+                ],
+                "properties": {
+                    "error": {
+                        "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                }
+            },
+            "CreateEntityRequest": {
+                "type": "object",
+                "description": "Request to create a new entity",
+                "required": [
+                    "data"
+                ],
+                "properties": {
+                    "data": {}
+                }
+            },
+            "EntityListResponse": {
+                "type": "object",
+                "description": "Response for listing entities",
+                "required": [
+                    "entities",
+                    "total",
+                    "page",
+                    "page_size"
+                ],
+                "properties": {
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/EntityResponse"
+                        }
+                    },
+                    "page": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "total": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                }
+            },
+            "EntityResponse": {
+                "type": "object",
+                "description": "Response for a single entity",
+                "required": [
+                    "id",
+                    "entity_type",
+                    "data",
+                    "created_at",
+                    "updated_at"
+                ],
+                "properties": {
+                    "created_at": {
+                        "$ref": "#/components/schemas/DateTime"
+                    },
+                    "data": {},
+                    "entity_type": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "$ref": "#/components/schemas/DateTime"
+                    }
+                }
+            },
+            "HealthResponse": {
+                "type": "object",
+                "description": "Health check response",
+                "required": [
+                    "status",
+                    "version",
+                    "timestamp",
+                    "database"
+                ],
+                "properties": {
+                    "database": {
+                        "$ref": "#/components/schemas/DatabaseHealth"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "$ref": "#/components/schemas/DateTime"
+                    },
+                    "version": {
+                        "type": "string"
+                    }
+                }
+            },
+            "UpdateEntityRequest": {
+                "type": "object",
+                "description": "Request to update an existing entity",
+                "required": [
+                    "data"
+                ],
+                "properties": {
+                    "data": {}
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "entities",
+            "description": "Entity CRUD operations"
+        },
+        {
+            "name": "health",
+            "description": "Health check endpoints"
+        }
+    ]
+}
