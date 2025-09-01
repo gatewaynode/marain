@@ -2,6 +2,7 @@ pub mod auth;
 pub mod database;
 pub mod error;
 pub mod secure_log;
+pub mod ulid_uuid_bridge;
 
 #[cfg(test)]
 mod test_secure_log_restart;

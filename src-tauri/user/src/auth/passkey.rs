@@ -11,6 +11,7 @@ use super::types::{AuthenticatedUser, PassKeyCredential};
 use crate::{
     database::UserDatabase,
     error::{Result, UserError},
+    ulid_uuid_bridge::ulid_string_to_uuid,
 };
 
 /// PassKey manager for WebAuthn operations
@@ -186,11 +187,13 @@ impl PassKeyManager {
             .map(|cred| CredentialID::from(cred.credential_id))
             .collect();
 
-        // Create user entity - using Passkey type from webauthn-rs
-        // Per `webauthn-rs` documentation, a UUID must be used for the user handle.
-        // This is a temporary measure until the library supports ULIDs or another
-        // identifier that aligns with the project's standard.
-        let user_uuid = uuid::Uuid::new_v4();
+        // Convert user's ULID to UUID for webauthn-rs compatibility
+        // The webauthn-rs library requires a UUID for the user handle.
+        // We convert our ULID to UUID using a byte-for-byte conversion that preserves
+        // the 128-bit value while changing the type.
+        let user_uuid = ulid_string_to_uuid(user_id).ok_or_else(|| {
+            UserError::Configuration(format!("Invalid user ID format: {}", user_id))
+        })?;
 
         // Start registration with proper API
         let (ccr, reg_state) = self

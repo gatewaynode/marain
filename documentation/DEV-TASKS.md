@@ -1726,6 +1726,70 @@ Implemented OpenSSL vendoring to bundle OpenSSL with the build instead of relyin
 - `src-tauri/api/Cargo.toml`: Added OpenSSL dependency
 - `.github/workflows/rust.yml`: Updated with vendoring environment variables
 
+
+## Task 21 "UUID from Bytes" Workaround for webauthn-rs UUID dependency
+
+- [x] Status: Complete
+
+This strategy involves a thin, in-house conversion layer that handles the translation between our system's ULIDs and the webauthn-rs API's required UUIDs.  Whenever a call to webauthn-rs requires a UUID we need to use the ULID and convert it to a byte for byte identical variable of the UUID type.  An example of this conversion is in `experiments/ulid_to_uuid` to use as reference.
+
+As part of this we need to make sure we restore the ULID as the primary key for users in the `users` crate.
+
+### Acceptance Criteria:
+
+- A conversion function for ULIDs to UUIDs exists in the user crate ✓
+- All calls to webauthn-rs use the conversion function before injecting the UUID as a required parameter ✓
+- The documentation has been updated to describe how we handle and should handle UUID requirements to use the conversion function ✓
+
+### **Implementation Notes:**
+
+**Completed (2025-09-01)**
+
+Task 21 has been successfully completed. A comprehensive ULID to UUID conversion layer has been implemented to maintain ULID consistency throughout the system while supporting the webauthn-rs library's UUID requirements.
+
+1. **Created Conversion Module** (`src-tauri/user/src/ulid_uuid_bridge.rs`)
+   - Implemented `ulid_to_uuid()` for converting ULID to UUID (byte-for-byte identical)
+   - Implemented `uuid_to_ulid()` for reverse conversion
+   - Added `generate_ulid_uuid_pair()` for generating both representations
+   - Added string conversion functions for parsing from strings
+   - All functions preserve the 128-bit value without data loss
+
+2. **Updated PassKey Implementation** (`src-tauri/user/src/auth/passkey.rs`)
+   - Modified `start_registration()` to convert user's ULID to UUID for webauthn-rs
+   - Replaced `uuid::Uuid::new_v4()` with ULID conversion
+   - Added proper error handling for invalid ULID formats
+   - Added explanatory comments about the conversion requirement
+
+3. **Database Schema**
+   - Users table continues to use TEXT field for storing ULID strings
+   - No schema changes required as TEXT can store ULID strings
+   - Maintains sortability and time-ordering benefits of ULIDs
+
+4. **Testing**
+   - All 22 unit tests pass successfully
+   - Doc tests pass after fixing import statements
+   - No clippy warnings
+   - Round-trip conversion tests verify no data loss
+
+5. **Documentation** (`documentation/ulid-uuid-conversion.md`)
+   - Created comprehensive documentation explaining the conversion strategy
+   - Included usage examples and best practices
+   - Documented when to use and when not to use the conversion layer
+   - Added testing instructions and future considerations
+
+**Key Implementation Details:**
+- The conversion is a simple byte-for-byte copy between the two 128-bit types
+- No data is lost in the conversion process
+- The system continues to use ULIDs everywhere except at the webauthn-rs boundary
+- The conversion layer is thin and only used where absolutely necessary
+
+**Benefits:**
+- Maintains ULID consistency throughout the codebase
+- Provides compatibility with UUID-requiring libraries
+- Preserves sortability and time-ordering properties of ULIDs
+- Easy to remove if webauthn-rs adds ULID support in the future
+
+
 ---
 
 ## Task TEMPLATE
