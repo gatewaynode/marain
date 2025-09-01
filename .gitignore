@@ -46,3 +46,8 @@ src-tauri/*/data/logs/
 .vscode/*
 .kilocode
 .kilocode/*
+
+# Experiments
+# Little snippets to help guide the LLM in how to do very specific and unique things
+experiments
+experiments/*
