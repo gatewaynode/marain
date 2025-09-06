@@ -1,0 +1,95 @@
+id: user
+name: User Profile
+description: Semi-private user profile entity without PII or secrets.
+versioned: true
+recursive: false
+cacheable: true
+fields:
+  - id: username
+    type: text
+    required: true
+    label: Username
+    description: Unique username (e.g., "creative_coder")
+  - id: display_name
+    type: text
+    required: true
+    label: Display Name
+    description: Full display name (e.g., "Alex Doe")
+  - id: user_id
+    type: text
+    required: true
+    label: User ID
+    description: ULID for the user (e.g., "01H8XGJWBWBAQ4Z4M9D5K4Z3E1")
+  - id: identity_type
+    type: text
+    required: true
+    label: Identity Type
+    description: "Type of identity (default \"human\"; options: \"bot\", \"agent\", \"corporation\", \"dog\")"
+  - id: managed_by
+    type: entity_reference
+    target_entity: user
+    required: true
+    label: Managed By
+    description: User ID of managing entity if alias/non-human (e.g., "01H8XGJWBWBAQ4Z4M9D5K4Z3E0")
+  - id: avatar_url
+    type: text
+    required: true
+    label: Avatar URL
+    description: "URL to user avatar (e.g., \"https://example.com/path/to/user/avatar.png\")"
+  - id: bio
+    type: long_text
+    required: true
+    label: Bio
+    description: User biography
+  - id: public_links
+    type: entity_reference
+    target_entity: links
+    cardinality: -1
+    required: false
+    label: Public Links
+    description: Up to 5 links to external sites
+  - id: theme_preferences
+    type: text
+    required: true
+    label: Theme Preferences
+    description: User theme ("light" or "dark")
+  - id: language
+    type: text
+    required: true
+    label: Language
+    description: Preferred language (e.g., "en-US")
+  - id: timezone
+    type: text
+    required: true
+    label: Timezone
+    description: User timezone (e.g., "America/New_York")
+  - id: profile_visibility
+    type: text
+    required: true
+    label: Profile Visibility
+    description: Visibility setting ("public", "private", "friends_only")
+  - id: notification_preferences
+    type: text
+    required: true
+    label: Notification Preferences
+    description: Notification level ("none", "security", "important", "all")
+  - id: new_followers
+    type: boolean
+    required: true
+    label: Notify New Followers
+    description: Allow notifications for new followers
+  - id: direct_messages
+    type: boolean
+    required: true
+    label: Direct Messages
+    description: Allow direct messages
+  - id: product_updates
+    type: boolean
+    required: true
+    label: Product Updates
+    description: Receive product update notifications
+  - id: metadata
+    type: long_text
+    required: false
+    label: Metadata
+    description: "JSON string for additional data (e.g., {\"profile_views\": 1024, \"last_badge_earned\": \"pioneer\", \"custom_status_emoji\": \"🚀\"})"

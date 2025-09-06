@@ -6,91 +6,144 @@ for all entities in the system.  These entities are hot reloaded when files chan
 
 ## Technique
 
-Trait‑object (Box<dyn MyTrait>) 
-– each element is a boxed value that implements a common trait.	
+Trait-object (Box<dyn Entity>)
+– each element is a boxed value that implements the Entity trait.
 - The set of element types may grow, you want true polymorphism, or the structs are large and you don’t want them copied into the enum.
 
-Trait‑object Vec (Box<dyn Drawable>)
+Trait‑object Vec (Box<dyn Entity>)
 
 ### Example Implementation
 
 ```rust
-// ----- main.rs --------------------------------------------------------------
+// Adapted from src-tauri/entities/src/entity.rs and schema_loader.rs
 use std::fmt::Debug;
 
-// The common behaviour.
-trait Drawable: Debug {
-    fn draw(&self);
+// The common Entity trait for polymorphism.
+trait Entity: Debug {
+    fn get_id(&self) -> &str;
+    fn get_name(&self) -> &str;
+    fn validate(&self) -> Result<(), String>;
 }
 
-// Concrete types – they can be as large or complex as you like.
+// Concrete entity type: Article
 #[derive(Debug)]
-struct Circle {
-    radius: f64,
+struct Article {
+    id: String,
+    name: String,
+    title: String,
+    body: String,
 }
-impl Drawable for Circle {
-    fn draw(&self) {
-        println!("(dyn) Circle with r = {}", self.radius);
+impl Entity for Article {
+    fn get_id(&self) -> &str {
+        &self.id
+    }
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn validate(&self) -> Result<(), String> {
+        if self.title.is_empty() {
+            return Err("Title cannot be empty".to_string());
+        }
+        Ok(())
     }
 }
 
+// Concrete entity type: User
 #[derive(Debug)]
-struct Rectangle {
-    width:  f64,
-    height: f64,
+struct User {
+    id: String,
+    name: String,
+    email: String,
 }
-impl Drawable for Rectangle {
-    fn draw(&self) {
-        println!(
-            "(dyn) Rectangle {} × {}",
-            self.width, self.height
-        );
+impl Entity for User {
+    fn get_id(&self) -> &str {
+        &self.id
+    }
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+    fn validate(&self) -> Result<(), String> {
+        if !self.email.contains('@') {
+            return Err("Invalid email format".to_string());
+        }
+        Ok(())
     }
 }
 
-// A third type just to prove heterogeneity.
-#[derive(Debug)]
-struct Star {
-    points: usize,
-}
-impl Drawable for Star {
-    fn draw(&self) {
-        println!("(dyn) Star with {} points", self.points);
-    }
-}
+// In schema_loader.rs or main runtime:
+// Global storage: static mut entity_definitions: Vec<Box<dyn Entity>> = Vec::new();
 
-/* ------------------------------------------------------------------------ */
-fn main() {
+// Loading example:
+fn load_entities() {
     // Vec of boxed trait objects. Each element lives on the heap.
-    let mut objects: Vec<Box<dyn Drawable>> = Vec::new();
+    let mut entity_definitions: Vec<Box<dyn Entity>> = Vec::new();
 
-    objects.push(Box::new(Circle { radius: 1.2 }));
-    objects.push(Box::new(Rectangle {
-        width: 3.0,
-        height: 4.5,
+    entity_definitions.push(Box::new(Article {
+        id: "article_1".to_string(),
+        name: "Article".to_string(),
+        title: "Sample Article".to_string(),
+        body: "Content body".to_string(),
     }));
-    objects.push(Box::new(Star { points: 5 }));
+    entity_definitions.push(Box::new(User {
+        id: "user_1".to_string(),
+        name: "User".to_string(),
+        email: "user@example.com".to_string(),
+    }));
 
-    // Dynamic dispatch – the concrete `draw` implementation is chosen at runtime.
-    for obj in &objects {
-        obj.draw();
+    // Dynamic dispatch – e.g., validate all entities
+    for entity in &entity_definitions {
+        if let Err(e) = entity.validate() {
+            println!("Validation error: {}", e);
+        }
     }
 
-    // Because we required `Debug`, we can also debug‑print each element:
-    println!("--- Debug view of the vector ---");
-    for (i, obj) in objects.iter().enumerate() {
-        println!("{}: {:?}", i, obj);
+    // Debug print:
+    println!("--- Debug view of entity definitions ---");
+    for (i, entity) in entity_definitions.iter().enumerate() {
+        println!("{}: id={}, name={}", i, entity.get_id(), entity.get_name());
     }
 }
 ```
 
 #### What’s happening?
-Box<dyn Drawable> is a fat pointer: it stores a pointer to the heap‑allocated concrete value plus a v‑table pointer for dynamic dispatch.
-The vector holds only those fat pointers; each element can be any type that implements Drawable.
+Box<dyn Entity> is a fat pointer: it stores a pointer to the heap‑allocated concrete value plus a v‑table pointer for dynamic dispatch.
+The vector holds only those fat pointers; each entity can be any type that implements Entity.
 
 - Pros
-  - Adding a new drawable type never touches existing code – just implement Drawable and push it into the vec.
-  - Works even when the concrete types are defined in different crates.
+  - Adding a new entity type never touches existing code – just implement Entity and load from schema.
+  - Works even when concrete types are defined in different crates.
 - Cons
-  - One heap allocation per element (or you can use Rc<dyn Drawable>/Arc<dyn Drawable> to share).
-  - Slight runtime overhead for virtual‑function
+  - One heap allocation per definition (or use Rc/Arc for sharing).
+  - Slight runtime overhead for virtual function calls.
+
+### Schema Loading and Hot-Reload Flow
+
+The entity_definitions are loaded and updated via the schema-manager crate's watcher.
+
+```mermaid
+sequenceDiagram
+    participant Watcher as File Watcher (notify)
+    participant Loader as Schema Loader
+    participant Global as entity_definitions (Vec<Box<dyn Entity>>)
+    participant Cache as ReDB Cache
+    participant DB as Database
+
+    Note over Watcher,DB: Hot-Reload Trigger
+    Watcher->>Loader: Detect YAML change in schemas/
+    Loader->>Loader: Parse YAML to Entity structs
+    Loader->>Global: Clear old Vec and push new Box<dyn Entity>
+    Global->>Cache: Invalidate affected cache keys
+    alt Schema Change Affects DB
+        Global->>DB: Update dynamic schema (e.g., add tables)
+    end
+    Loader->>Watcher: Acknowledge reload
+```
+
+### Schema Examples
+
+For practical examples, refer to the YAML files in the schemas/ directory:
+- [snippet.schema.yaml](../../../schemas/snippet.schema.yaml)
+- [multi.schema.yaml](../../../schemas/multi.schema.yaml)
+- [all_fields.schema.yaml](../../../schemas/all_fields.schema.yaml)
+
+See the [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md) for more on entity schema structure.

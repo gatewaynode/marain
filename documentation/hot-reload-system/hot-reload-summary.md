@@ -84,6 +84,8 @@ CREATE TABLE content_article (
 );
 ```
 
+This dynamic schema generation aligns with the entity modeling in [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#data-modeling--storage) and [entity-management.md](../entity-management-system/entity-management.md) for hot-reloaded YAML definitions.
+
 ## Implementation Plan
 
 The work has been broken down into 11 main tasks that will:
@@ -143,3 +145,16 @@ The work has been broken down into 11 main tasks that will:
 - ✅ 100% backward compatibility during state migration
 - ✅ Zero data loss guarantee
 - ✅ Complete audit trail of all changes
+
+## Cross-References and Best Practices
+
+For integration with core systems:
+- See [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#system-architecture) for overall architecture and API flow affected by hot-reloads.
+- Refer to [entity-management-system/entity-management.md](../entity-management-system/entity-management.md) for schema loading details using trait-objects.
+
+### Security Best Practices for Hot-Reload
+- **File Validation:** Parse and validate YAML inputs before applying changes to prevent malicious schemas (e.g., injection via fields).
+- **Access Control:** Restrict watched directories to config/schemas; log all reload events to secure.log.
+- **Rollback Security:** Ensure rollbacks don't expose sensitive state; test for race conditions in multi-instance setups.
+- **Dependencies:** Use secure file watching (e.g., notify crate); update for vulnerabilities.
+- **Testing:** Unit test action generators; E2E for reload scenarios without data loss.

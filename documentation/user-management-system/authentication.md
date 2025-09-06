@@ -35,9 +35,22 @@ sequenceDiagram
 
 Sessions are managed using `tower-sessions` with an `sqlx-store`.
 
--   **Session Store:** `data/user-backend/marain_user.db`
+-   **Session Store:** `data/user-backend/marain_user.db` (see [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#critical-path-configurations--development-workflow) for data paths and DB flexibility: SQLite for dev, PostgreSQL for prod).
 -   **Session Lifetime:** Configurable, defaults to 24 hours.
--   **Security:** Session data is encrypted and secure.
+-   **Security:** Session data is encrypted and secure. Use ULIDs for session IDs, converting to UUIDs if needed via the bridge in `src-tauri/user/src/ulid_uuid_bridge.rs`.
+
+## Cross-References and Best Practices
+
+For broader context on data modeling and caching:
+- Refer to [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#data-modeling--storage) for entity references in user data and ReDB caching for sessions.
+- Integrate with the overall API lifecycle in [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#api--request-lifecycle).
+
+### Security Best Practices for Authentication
+- **Parameterized Queries:** All DB interactions use SQLx parameterized queries to prevent injection.
+- **Rate Limiting:** Implement on login endpoints to mitigate brute-force attacks.
+- **Token Security:** Magic link tokens expire quickly; passkeys use WebAuthn standards.
+- **Logging:** Log all auth attempts to secure.log without sensitive data.
+- **Dependencies:** Keep axum-login and tower-sessions updated; audit for vulnerabilities.
 
 ## Implementation Guidelines
 

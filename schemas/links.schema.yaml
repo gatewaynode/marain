@@ -1,0 +1,19 @@
+id: links
+name: Links
+description: Supporting entity for user public links.
+versioned: false
+recursive: false
+cacheable: true
+fields:
+  - id: url
+    type: text
+    required: true
+    label: URL
+  - id: label
+    type: text
+    required: true
+    label: Label
+  - id: title_attribute
+    type: text
+    required: false
+    label: Title Attribute

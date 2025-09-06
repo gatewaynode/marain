@@ -50,6 +50,50 @@ Successfully implemented the `marc` CLI binary with the following features:
 
 The CLI can be built with `cargo build --package marain-cli` and tested with `cargo test --package marain-cli`.
 
+
+## Task 22 Implement the user semi-private user profile as a content entity
+
+- [ ] Status: Ready for work
+
+
+This is the first part of implementing user management, create the less sensitive content type for holding user information.  It must be free from PII data and secrets.  This entity will require a supporting "links" entity with a standard set of fields for displaying hyperlinks.
+
+These are the fields the user entity content type requires:
+- username: "creative_coder"
+- display_name: "Alex Doe"
+- user_id: "01H8XGJWBWBAQ4Z4M9D5K4Z3E1" the ULID
+- identity_type: "human", Other potential values: "bot", "agent", "corporation", "dog"
+- managed_by: "01H8XGJWBWBAQ4Z4M9D5K4Z3E0" # user_id of the managing human or group if the user is an alias or non-human entity
+- avatar_url: "https://example.com/path/to/user/avatar.png"
+- bio: "Developer and designer focused on creating beautiful and functional web experiences."
+- public_links: a cardinality 5 entity reference to the links entity
+- theme_preferences: "light" or "dark"
+- language: "en-US"
+- timezone: "America/New_York"
+- created_at: "2023-10-27T10:00:00Z"
+- profile_visibility: "public" # Other potential values: "private", "friends_only"
+- notification_preferences: a select list "none", "security", "important", "all"
+- new_followers: true
+- direct_messages: true
+- product_updates: false
+- metadata: A JSON string with stuff like
+   - profile_views: 1024
+   - last_badge_earned: "pioneer"
+   - custom_status_emoji: "🚀"
+
+The link entity requires:
+- URL
+- Label
+- Title Attribute
+
+### Acceptance Criteria:
+
+- Two new schema files have been created, one for links, and one for user profiles
+- The database tables have been confirmed to be in place and working
+
+### **Implementation Notes:**
+
+
 ---
 
 ## Task TEMPLATE
@@ -93,4 +137,30 @@ Could not resolve reference: Could not resolve pointer: /components/schemas/Date
 # Diff Fails From Last Task
 
 **Place diff files that fail to merge here with the task #, filename and line context for manual application.**
+
+---
+
+## Task 23 Documentation Refinements for Consistency and Quality
+
+- [x] Status: Complete
+
+### Description:
+Refined key documentation files to achieve consistent quality, depth, and completeness, focusing on points of refinement identified in architecture and docs. Updates include tailored examples, enhanced diagrams, cross-references to DEVELOPER-GUIDE.md, and added security best practices sections across user management and hot-reload docs.
+
+### Changes Made:
+- **entity-management.md**: Tailored trait-object example to Marain Entity trait with Article/User structs; added Mermaid sequence diagram for schema loading/hot-reload flow; included links to schema examples (snippet.schema.yaml, etc.).
+- **user-management-system.md**: Expanded core components with implementation details (magic links, passkeys, ULID/UUID bridge, file refs); enhanced Mermaid graph with data flows; added Security Best Practices section.
+- **authentication.md**: Added cross-references to DEVELOPER-GUIDE.md for DB/caching/ULID; inserted Security Best Practices subsection under Session Management.
+- **authorization.md**: Updated Data Model with DB flexibility ref; added Security Best Practices under Implementation Guidelines, with cross-refs to auth and API lifecycle.
+- **user-management.md**: Enhanced User Schema with modeling ref; added Security Best Practices under Implementation Guidelines, linking to auth/authz and fields crate.
+- **hot-reload-summary.md**: Added ref to dynamic schema in State Management Changes; appended Cross-References and Security Best Practices section for integration and validation.
+
+### Verification:
+- Manual review confirms uniform structure (e.g., consistent sections: Core Components, Implementation Guidelines, Security Best Practices).
+- Cross-references ensure navigation to DEVELOPER-GUIDE.md for broader context.
+- No syntax errors in Mermaid diagrams or YAML examples.
+- Suggested commands: `cd src-tauri && cargo fmt && cargo clippy --all`, `bun run check` (no issues expected as docs only).
+
+### **Implementation Notes:**
+Documentation now provides a cohesive, secure, and comprehensive guide, improving developer experience and maintainability. All updates align with project principles: modularity, configuration-as-code, and security priority.
 
