@@ -66,7 +66,7 @@ impl GenericEntity {
     fn generate_create_table_sql(&self) -> String {
         let mut columns = vec![
             "id TEXT PRIMARY KEY".to_string(), // ULID will be used for this field
-            "user INTEGER DEFAULT 0".to_string(), // Add user field with default 0
+            "user TEXT DEFAULT '00000000000000000000000000'".to_string(), // Add user field with default zero ULID
             "rid INTEGER DEFAULT 1".to_string(), // Add revision ID field
             "last_cached TIMESTAMP".to_string(), // When entity was last cached to JSON cache
             "cache_ttl INTEGER DEFAULT 86400".to_string(), // Cache time-to-live in seconds (default 24 hours)
@@ -107,16 +107,16 @@ impl GenericEntity {
 
         format!(
             r#"CREATE TABLE IF NOT EXISTS {} (
-    id TEXT PRIMARY KEY,
-    user INTEGER DEFAULT 0,
-    rid INTEGER DEFAULT 1,
-    parent_id TEXT NOT NULL,
-    value TEXT NOT NULL,
-    sort_order INTEGER,
-    FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
-)"#,
-            table_name,
-            self.definition.table_name()
+            id TEXT PRIMARY KEY,
+            user TEXT DEFAULT '00000000000000000000000000',
+            rid INTEGER DEFAULT 1,
+            parent_id TEXT NOT NULL,
+            value TEXT NOT NULL,
+            sort_order INTEGER,
+            FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
+        )"#,
+                    table_name,
+                    self.definition.table_name()
         )
     }
 
@@ -128,7 +128,7 @@ impl GenericEntity {
 
         let mut columns = vec![
             "id TEXT".to_string(), // Not primary key in revision table
-            "user INTEGER DEFAULT 0".to_string(),
+            "user TEXT DEFAULT '00000000000000000000000000'".to_string(),
             "rid INTEGER NOT NULL".to_string(),  // Revision ID
             "last_cached TIMESTAMP".to_string(), // When entity was last cached to JSON cache
             "cache_ttl INTEGER DEFAULT 86400".to_string(), // Cache time-to-live in seconds
@@ -171,18 +171,18 @@ impl GenericEntity {
 
         Some(format!(
             r#"CREATE TABLE IF NOT EXISTS {} (
-    id TEXT,
-    user INTEGER DEFAULT 0,
-    rid INTEGER NOT NULL,
-    parent_id TEXT NOT NULL,
-    value TEXT NOT NULL,
-    sort_order INTEGER,
-    revision_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id, rid),
-    FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
-)"#,
-            table_name,
-            self.definition.table_name()
+            id TEXT,
+            user TEXT DEFAULT '00000000000000000000000000',
+            rid INTEGER NOT NULL,
+            parent_id TEXT NOT NULL,
+            value TEXT NOT NULL,
+            sort_order INTEGER,
+            revision_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id, rid),
+            FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
+        )"#,
+                    table_name,
+                    self.definition.table_name()
         ))
     }
 
