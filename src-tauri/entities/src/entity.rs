@@ -67,7 +67,7 @@ impl GenericEntity {
         let mut columns = vec![
             "id TEXT PRIMARY KEY".to_string(), // ULID will be used for this field
             "user TEXT DEFAULT '00000000000000000000000000'".to_string(), // Add user field with default zero ULID
-            "rid INTEGER DEFAULT 1".to_string(), // Add revision ID field
+            "rid INTEGER DEFAULT 1".to_string(),                          // Add revision ID field
             "last_cached TIMESTAMP".to_string(), // When entity was last cached to JSON cache
             "cache_ttl INTEGER DEFAULT 86400".to_string(), // Cache time-to-live in seconds (default 24 hours)
             "content_hash TEXT".to_string(), // Hash of all field values for change detection
@@ -115,8 +115,8 @@ impl GenericEntity {
             sort_order INTEGER,
             FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
         )"#,
-                    table_name,
-                    self.definition.table_name()
+            table_name,
+            self.definition.table_name()
         )
     }
 
@@ -181,8 +181,8 @@ impl GenericEntity {
             PRIMARY KEY (id, rid),
             FOREIGN KEY (parent_id) REFERENCES {}(id) ON DELETE CASCADE
         )"#,
-                    table_name,
-                    self.definition.table_name()
+            table_name,
+            self.definition.table_name()
         ))
     }
 
