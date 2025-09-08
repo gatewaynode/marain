@@ -193,7 +193,7 @@ The database schema is **dynamically generated** from the YAML entity definition
 - **Default Columns**: All tables automatically include:
     - `id` (ULID): The primary key.
     - `rid` (Integer): The revision ID, incremented on each update.
-    - `user` (Integer): The ID of the user who made the change (defaults to 0 for system).
+    - `user` (Text ULID): The ULID of the user who made the change (defaults to "00000000000000000000000000" for system).
     - `content_hash` (Text): SHA256 hash of the content for change detection.
     - `last_cached` (Timestamp): When the item was last cached.
     - `cache_ttl` (Integer): Time-to-live in seconds for the cache entry.

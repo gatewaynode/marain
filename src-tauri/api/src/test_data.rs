@@ -11,7 +11,7 @@ pub fn generate_snippet_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Getting Started with Rust";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("body".to_string(), json!("Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety. Lorem ipsum dolor sit amet, consectetur adipiscing elit."));
             data.insert("author".to_string(), json!("user-001"));
@@ -28,7 +28,7 @@ pub fn generate_snippet_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Understanding Async/Await";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("body".to_string(), json!("Asynchronous programming in Rust allows you to write efficient concurrent code. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."));
             data.insert("author".to_string(), json!("user-002"));
@@ -45,7 +45,7 @@ pub fn generate_snippet_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Memory Management Tips";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("body".to_string(), json!("Learn about ownership, borrowing, and lifetimes in Rust. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris."));
             data.insert("author".to_string(), json!("user-001"));
@@ -68,7 +68,7 @@ pub fn generate_all_fields_test_data() -> Vec<HashMap<String, serde_json::Value>
             let mut data = HashMap::new();
             let title = "Complete Field Test Entry";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("splash".to_string(), json!("<h1>Welcome to the Test</h1><p>This is rich text content with <strong>bold</strong> and <em>italic</em> formatting.</p>"));
             data.insert("body".to_string(), json!("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."));
@@ -90,7 +90,7 @@ pub fn generate_all_fields_test_data() -> Vec<HashMap<String, serde_json::Value>
             let mut data = HashMap::new();
             let title = "Minimal Field Entry";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("splash".to_string(), json!("<p>Simple HTML content</p>"));
             data.insert("body".to_string(), json!("Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."));
@@ -118,7 +118,7 @@ pub fn generate_multi_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Multi-Value Test Entry";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             // Note: multi-value fields (two, infinite) are stored in separate tables
             data.insert("author".to_string(), json!("user-001"));
@@ -135,7 +135,7 @@ pub fn generate_multi_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Another Multi Entry";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("author".to_string(), json!("user-003"));
             data.insert("published_at".to_string(), json!(Utc::now().to_rfc3339()));
@@ -151,7 +151,7 @@ pub fn generate_multi_test_data() -> Vec<HashMap<String, serde_json::Value>> {
             let mut data = HashMap::new();
             let title = "Minimal Multi Entry";
             data.insert("id".to_string(), json!(generate_id_from_title(title)));
-            data.insert("user".to_string(), json!(0)); // Default system user
+            data.insert("user".to_string(), json!("00000000000000000000000000")); // Default system user (zero ULID)
             data.insert("title".to_string(), json!(title));
             data.insert("author".to_string(), json!("user-002"));
             data.insert("published_at".to_string(), json!(Utc::now().to_rfc3339()));
@@ -275,7 +275,7 @@ async fn insert_multi_value_fields(
                     "INSERT INTO field_multi_two (id, user, parent_id, value, sort_order) VALUES (?, ?, ?, ?, ?)"
                 )
                 .bind(&field_id)
-                .bind(0) // Default system user
+                .bind("00000000000000000000000000") // Default system user (zero ULID)
                 .bind(parent_id)
                 .bind(value)
                 .bind(sort_order as i32)
@@ -297,7 +297,7 @@ async fn insert_multi_value_fields(
                     "INSERT INTO field_multi_infinite (id, user, parent_id, value, sort_order) VALUES (?, ?, ?, ?, ?)"
                 )
                 .bind(&field_id)
-                .bind(0) // Default system user
+                .bind("00000000000000000000000000") // Default system user (zero ULID)
                 .bind(parent_id)
                 .bind(value)
                 .bind(sort_order as i32)
