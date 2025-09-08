@@ -37,7 +37,7 @@ All that said.  After I figured out how to work with the two models I ended up u
 - [ ] Implemeent the cron event signaler with system configuration
 - [ ] Implement the standard work queue `crossbeam-channel`
 - [ ] Add broadcast triggers in standard workflow items
-- [ ] Implement the CLAP CLI interface
+- [x] Implement the CLAP CLI interface
 - [ ] Implement the default admin interface in Svelte5
 - [ ] Refine hook system locations and format, add a priority field
 - [ ] Document custom module API and write up a how-to guide

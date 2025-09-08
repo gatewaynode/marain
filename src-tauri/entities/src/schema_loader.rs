@@ -12,11 +12,23 @@ impl SchemaLoader {
     pub async fn load_entity_from_file(path: &Path) -> Result<Box<dyn Entity>> {
         debug!("Loading entity schema from: {:?}", path);
 
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| EntitiesError::SchemaParsing(format!("Failed to read file: {}", e)))?;
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            EntitiesError::SchemaParsing(format!(
+                "Failed to read schema file {:?}: {}",
+                path.display(),
+                e
+            ))
+        })?;
 
         let definition: EntityDefinition = serde_yaml::from_str(&content)
-            .map_err(|e| EntitiesError::SchemaParsing(format!("Failed to parse YAML: {}", e)))?;
+            .map_err(|e| {
+                let mut msg = format!("Failed to parse YAML in {:?}: {}", path.display(), e);
+                if let Some(loc) = e.location() {
+                    msg.push_str(&format!(" at line {} column {}", loc.line(), loc.column()));
+                }
+                msg.push_str(". Tip: Ensure all descriptions and values with colons (:), semicolons (;), or special characters are quoted (e.g., \"https://example.com\" or {\"key\": value}). Check for indentation errors.");
+                EntitiesError::SchemaParsing(msg)
+            })?;
 
         info!("Loaded entity '{}' from {:?}", definition.id, path);
 

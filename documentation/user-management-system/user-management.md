@@ -4,7 +4,7 @@ User management involves the creation, reading, updating, and deletion (CRUD) of
 
 ## User Schema
 
-The user schema defines the structure of user data stored in the `marain_user.db` database.
+The user schema defines the structure of user data stored in the `marain_user.db` database (see [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#critical-path-configurations--development-workflow) for DB paths).
 
 ```yaml
 id: user
@@ -42,6 +42,8 @@ fields:
     cardinality: -1
 ```
 
+This schema aligns with the flexible content modeling in [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#flexible-content-modeling), using entity references for roles and supporting versioning if enabled.
+
 ## API Endpoints
 
 The following API endpoints will be available for user management after RBAC is implemented, and will be protected by the authorization system.
@@ -54,9 +56,17 @@ The following API endpoints will be available for user management after RBAC is 
 
 ## Implementation Guidelines
 
-User management will be handled by a dedicated `user` crate.
+User management will be handled by a dedicated `user` crate, integrating with authentication [authentication.md](./authentication.md) and authorization [authorization.md](./authorization.md).
 
 -   **User Crate**: This crate will contain the business logic for user CRUD operations, interacting directly with the `marain_user.db`.
--   **API Handlers**: The API endpoints will be implemented in the `api` crate. These handlers will call functions from the `user` crate to perform the requested operations.
+-   **API Handlers**: The API endpoints will be implemented in the `api` crate. These handlers will call functions from the `user` crate to perform the requested operations, following the API lifecycle in [DEVELOPER-GUIDE.md](../DEVELOPER-GUIDE.md#api--request-lifecycle).
 -   **Authorization**: Each handler will require specific permissions. For example, `POST /api/v1/users` might require the `create_user` permission. This will be enforced by the authorization middleware.
--   **Data Validation**: Input data from API requests will be validated before being passed to the `user` crate. This includes checking for required fields, valid email formats, etc.
+-   **Data Validation**: Input data from API requests will be validated before being passed to the `user` crate. This includes checking for required fields, valid email formats, etc., using field validation from `src-tauri/fields/`.
+
+### Security Best Practices for User Management
+- **CRUD Validation:** Validate all inputs with parameterized queries to prevent injection; sanitize fields like email/phone.
+- **Access Control:** Enforce RBAC for all CRUD operations; log deletions to secure.log.
+- **Data Privacy:** Hash sensitive fields (e.g., passkeys) using content hashing utilities; support GDPR-like deletion.
+- **ID Handling:** Use ULIDs for user IDs, bridging to UUIDs as needed.
+- **Logging:** Log all CRUD actions to secure.log without exposing PII.
+- **Testing:** Unit tests for CRUD in user crate; E2E for API endpoints with auth.
