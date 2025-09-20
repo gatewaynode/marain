@@ -166,6 +166,39 @@ Successfully implemented ULID support for the default `user` field across all co
 The changes ensure secure, ULID-based user tracking without breaking existing functionality. Database rebuild recommended for production environments. All acceptance criteria met: schemas implicitly use string ULID via defaults, database rebuilt and repopulated, content code updated, documentation reflects changes.
 
 
+## Task 25 Align `tower` Dependency
+
+- [x] Status: Complete
+
+Update the `tower` dependency in [`Cargo.toml`](src-tauri/user/Cargo.toml:39) to match the version used in other crates to ensure workspace consistency.  All dependencies should be implemented in the latest stable version.
+
+
+### Acceptance Criteria:
+
+- The `tower` dependency is the latest stable version across the whole application
+
+### **Implementation Notes:**
+
+Successfully aligned the `tower` dependency across the workspace to ensure consistency and use the latest stable version.
+
+1. **Version Verification**: Confirmed that `tower` version 0.5.2 is the latest stable version available via `cargo search tower` and `cargo info tower`.
+
+2. **Dependency Updates**:
+   - Updated `src-tauri/user/Cargo.toml` from `tower = "0.5"` to `tower = "0.5.2"`
+   - Updated `src-tauri/api/Cargo.toml` from `tower = "0.5"` to `tower = "0.5.2"` for consistency
+
+3. **Workspace Consistency**: Both crates now explicitly use the same version (0.5.2), ensuring no version conflicts in the workspace.
+
+4. **Testing and Verification**:
+   - Ran `cd src-tauri && cargo update` to update Cargo.lock with the latest compatible versions
+   - Ran `cd src-tauri && cargo test` - All 94 tests passed across all crates
+   - Ran `cd src-tauri && cargo clippy --all` - No warnings or errors
+   - Ran `cd src-tauri && cargo fmt` - Code formatted successfully
+
+5. **Code Quality**: All changes adhere to AGENTS.md guidelines (latest stable dependencies, proper formatting, no clippy warnings).
+
+The `tower` dependency is now consistently set to the latest stable version (0.5.2) across the entire application, meeting all acceptance criteria.
+
 ---
 
 ## Task TEMPLATE

@@ -31,7 +31,8 @@ All that said.  After I figured out how to work with the two models I ended up u
 - [x] Switch to using ULIDs instead of UUIDs for cache keys and entity/field IDs
 - [x] Centralized content management features and functions in the `content` crate
 - [x] User management with the `user` crate with separation of sensitive user data
-- [ ] User profiles as entities
+- [x] User profiles as entities
+- [ ] Implement Cedar based policy engine for authorization control
 - [ ] Implement work queue persistence layer
 - [ ] Implement the event broadcast bus using `tokio::sync::broadcast`
 - [ ] Implemeent the cron event signaler with system configuration

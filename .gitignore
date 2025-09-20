@@ -51,3 +51,6 @@ src-tauri/*/data/logs/
 # Little snippets to help guide the LLM in how to do very specific and unique things
 experiments
 experiments/*
+
+# Why can't everyone just use AGENTS.md?
+WARP.md
