@@ -16,6 +16,9 @@ pub mod models;
 pub mod server;
 pub mod test_data;
 
+#[cfg(test)]
+mod middleware_hooks_tests;
+
 // Re-export server functions for convenience
 pub use server::{
     spawn_server, spawn_server_with_config, start_server, start_server_with_config, ApiConfig,
@@ -134,7 +137,7 @@ pub fn create_router(state: AppState) -> Router {
         // Apply middleware to all API routes
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            middleware_hooks::auth_middleware,
+            middleware_hooks::authorization_middleware,
         ))
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -28,6 +28,7 @@ schema-manager = { path = "../schema-manager" }
 json-cache = { path = "../json-cache" }
 content = { path = "../content" }
 user = { path = "../user" }
+authz = { path = "../authz" }
 
 # Authentication dependencies
 tower-sessions = "0.14"

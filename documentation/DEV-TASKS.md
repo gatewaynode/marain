@@ -241,7 +241,7 @@ The static PoC validates the CEDAR integration in isolation. Next stage (Task 27
 
 ## Task 27 Cedar Authorization: Basic Dynamic Integration (Stage 2)
 
-- [ ] Status: Blocked by Task 26
+- [x] Status: Complete
 
 This task focuses on integrating the `AuthzEngine` into the API middleware layer. It will replace the existing authentication middleware stub with a new authorization middleware. Initially, this middleware will use the hardcoded policies and entities from Stage 1 to verify that the request-response flow is working correctly before dynamic data is introduced. This corresponds to Stage 2 of the plan outlined in `documentation/AUTHZ-PLAN.md`.
 
@@ -254,6 +254,52 @@ This task focuses on integrating the `AuthzEngine` into the API middleware layer
 - Integration tests are created in the `api` crate to validate the middleware's behavior with mock requests.
 
 ### **Implementation Notes:**
+
+Successfully integrated the `AuthzEngine` into the API middleware layer, completing Stage 2 of the CEDAR authorization implementation. The middleware now enforces authorization policies on all incoming API requests using the static proof-of-concept from Stage 1.
+
+1. **Dependency Addition**: Added `authz` crate as a dependency to `src-tauri/api/Cargo.toml`.
+
+2. **Authorization Middleware** (`middleware_hooks.rs`): Replaced the stub `auth_middleware` with a functional `authorization_middleware` that:
+   - Creates an `AuthzEngine` instance for each request
+   - Extracts `Principal`, `Action`, and `Resource` from the HTTP request
+   - Calls `AuthzEngine::is_authorized_static_poc()` to make authorization decisions
+   - Returns `403 Forbidden` on Deny decisions
+   - Passes requests through on Allow decisions
+   - Logs all authorization decisions for audit trails
+   - Implements fail-closed security (any error results in 403)
+
+3. **Request Data Extraction Functions**:
+   - `extract_principal_from_request()`: Extracts principal based on request path (placeholder logic for Stage 2):
+     - Requests to `/admin/*` paths use "admin_user"
+     - Requests to `/health` use "test_user"
+     - Other requests default to "test_user"
+   - `extract_action_from_method()`: Maps HTTP methods to actions:
+     - GET, HEAD → "read"
+     - POST, PUT, PATCH → "write"
+     - DELETE → "delete"
+   - `extract_resource_from_path()`: Extracts resource type from URI path segments
+
+4. **Router Integration** (`lib.rs`): Updated the router to use `authorization_middleware` instead of the old `auth_middleware` stub.
+
+5. **Comprehensive Testing** (`middleware_hooks_tests.rs`): Created 13 integration tests validating:
+   - Principal extraction from different request paths (admin, health, regular)
+   - Action extraction from HTTP methods (GET, POST, DELETE)
+   - Resource extraction from URI paths
+   - Authorization engine allows test_user to read
+   - Authorization engine denies test_user write access
+   - Authorization engine allows admin_user any action
+   - Deny-by-default security for unknown users
+   - End-to-end authorization flow simulating complete middleware execution
+
+6. **Testing & Verification**: All 13 tests pass. Ran `cargo clippy --all` with no warnings. Ran `cargo fmt` successfully.
+
+7. **Documentation**: Added extensive inline documentation explaining:
+   - Current Stage 2 implementation with placeholder principals
+   - Future Stage 3 enhancements (extract from authenticated sessions, dynamic policies)
+   - Security considerations and fail-closed behavior
+   - Authorization flow and decision logging
+
+The middleware now provides a working authorization layer that can be tested with the hardcoded policies. Stage 3 will replace placeholder principal extraction with real session authentication and add dynamic policy/entity loading from files and database.
 
 ---
 
