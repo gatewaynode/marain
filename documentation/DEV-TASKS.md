@@ -199,6 +199,97 @@ Successfully aligned the `tower` dependency across the workspace to ensure consi
 
 The `tower` dependency is now consistently set to the latest stable version (0.5.2) across the entire application, meeting all acceptance criteria.
 
+
+---
+
+## Task 26 Cedar Authorization: Foundational Crate & Static PoC (Stage 1)
+
+- [x] Status: Complete
+
+This task covers the foundational setup for the new CEDAR-based authorization system. It involves creating the `authz` crate and implementing a self-contained, testable authorization engine with hardcoded data. This initial stage will validate the core CEDAR logic in isolation before integrating it with the broader application. This corresponds to Stage 1 of the plan outlined in `documentation/AUTHZ-PLAN.md`.
+
+We should add comments to the main files created in this task that cover the range of security concerns we need to make sure we cover for the remaineder of the authorization build out.
+
+### Acceptance Criteria:
+
+- A new `authz` crate is created at `src-tauri/authz` with `cedar-policy`, `serde`, `tokio`, and `thiserror` dependencies.
+- Core data structures (`Principal`, `Action`, `Resource`) are defined in `authz/src/types.rs`.
+- An `AuthzEngine` struct is implemented in `authz/src/lib.rs` with a hardcoded policy and entities.
+- The `AuthzEngine` includes a proof-of-concept method (`is_authorized_static_poc`) that can make authorization decisions based on the hardcoded data.
+- A comprehensive suite of unit tests is created in the `authz` crate to validate the static proof-of-concept logic.
+- Security concerns are about authorization are outlined in comments
+
+### **Implementation Notes:**
+
+Successfully implemented the foundational `authz` crate with a static proof-of-concept CEDAR authorization engine. This establishes the groundwork for the full CEDAR-based authorization system as outlined in Stage 1 of AUTHZ-PLAN.md.
+
+1. **Crate Setup**: Created new crate at `src-tauri/authz` with dependencies: `cedar-policy 3.2.0`, `serde_json 1.0`, `serde` (with derive), `tokio` (full features), `thiserror 1.0`. Added crate to workspace members.
+
+2. **Core Types** (`types.rs`): Implemented `Principal`, `Action`, and `Resource` structs with helper methods (user(), anonymous(), read(), write(), create(), delete()). All types implement standard traits (Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize). Added 7 unit tests.
+
+3. **Error Handling** (`error.rs`): Implemented `AuthzError` enum with 7 error variants covering policy parsing, entity creation, evaluation, schema validation, resource access, principal validation, and internal errors. Added security notes about minimal error disclosure. Added 2 unit tests.
+
+4. **Authorization Engine** (`lib.rs`): Implemented `AuthzEngine` with `is_authorized_static_poc()` method using hardcoded CEDAR policies (test_user can read, admin_user can do anything, deny-by-default). Hardcoded entities include test_user, admin_user, anonymous, and actions. Added 10 comprehensive unit tests covering allow/deny scenarios, deny-by-default security, and edge cases.
+
+5. **Comprehensive Security Documentation**: Added extensive security comments in `types.rs` covering 12 critical areas: principal identity & authentication, policy management & integrity, resource access control, action validation, ABAC, performance & DoS prevention, logging & auditing, error handling & information disclosure, hierarchical permissions, integration security, testing & validation, and compliance & standards.
+
+6. **Testing & Verification**: All 19 tests pass (7 in types.rs, 2 in error.rs, 10 in lib.rs, plus 1 doc-test). Ran `cargo clippy --all` with no warnings. Ran `cargo fmt` successfully.
+
+The static PoC validates the CEDAR integration in isolation. Next stage (Task 27) will integrate this into API middleware, then Stage 3 will add dynamic policy/entity loading.
+
+---
+
+## Task 27 Cedar Authorization: Basic Dynamic Integration (Stage 2)
+
+- [ ] Status: Blocked by Task 26
+
+This task focuses on integrating the `AuthzEngine` into the API middleware layer. It will replace the existing authentication middleware stub with a new authorization middleware. Initially, this middleware will use the hardcoded policies and entities from Stage 1 to verify that the request-response flow is working correctly before dynamic data is introduced. This corresponds to Stage 2 of the plan outlined in `documentation/AUTHZ-PLAN.md`.
+
+### Acceptance Criteria:
+
+- The `auth_middleware` stub in `src-tauri/api/src/middleware_hooks.rs` is replaced with a functional `authorization_middleware`.
+- The middleware correctly extracts a placeholder `Principal`, `Action`, and `Resource` from incoming HTTP requests.
+- The `AuthzEngine::is_authorized_static_poc()` method is successfully called from within the middleware.
+- The middleware correctly returns a `403 Forbidden` status on a "Deny" decision and passes the request to the next layer on an "Allow" decision.
+- Integration tests are created in the `api` crate to validate the middleware's behavior with mock requests.
+
+### **Implementation Notes:**
+
+---
+
+## Task 28 Cedar Authorization: Schema-Driven Dynamic Authorization (Stage 3)
+
+- [ ] Status: Blocked by Task 27
+
+This task involves replacing all hardcoded elements from the proof-of-concept with a fully dynamic, schema-driven system. This includes loading CEDAR policies and schemas from the file system, constructing CEDAR entities from database and user data, and updating the `AuthzEngine` to use this dynamic data for authorization decisions. This corresponds to Stage 3 of the plan outlined in `documentation/AUTHZ-PLAN.md`.
+
+### Acceptance Criteria:
+
+- The `schema-manager` is updated to watch for and load `.cedar` policy files from the `config/` directory.
+- The `schema-manager` can generate a valid CEDAR schema from the existing YAML entity schemas.
+- The `authz` crate contains functions to dynamically construct CEDAR entities from Marain user and content data.
+- The `AuthzEngine` is updated to make authorization decisions using the dynamically loaded policies, schema, and entities.
+- The entity schema format (`.schema.yaml`) is extended to include an optional `cedar` block for authorization metadata.
+- An initial set of default policies is created in `config/policies.cedar`.
+
+### **Implementation Notes:**
+
+---
+
+## Task 29 Cedar Authorization: Testing, Docs, & Finalization (Stage 4)
+
+- [ ] Status: Blocked by Task 28
+
+This is the final stage of the CEDAR authorization implementation. It focuses on expanding the test coverage to validate the complete dynamic system, updating all relevant project documentation to reflect the new architecture, and providing guidelines for developers and AI agents on how to manage authorization policies. This corresponds to Stage 4 of the plan outlined in `documentation/AUTHZ-PLAN.md`.
+
+### Acceptance Criteria:
+
+- The unit test suite in the `authz` crate is expanded to cover the dynamic entity construction logic.
+- The integration test suite in the `api` crate is expanded to cover common policy scenarios (e.g., admin access, resource owner, public access).
+- The `DEVELOPER-GUIDE.md` and `user-management-system/authorization.md` documents are updated to describe the new CEDAR-based system.
+- The `AGENTS.md` file is updated with clear guidelines for creating and modifying `.cedar` policies.
+
+### **Implementation Notes:**
 ---
 
 ## Task TEMPLATE
