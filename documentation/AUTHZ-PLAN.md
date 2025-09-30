@@ -28,7 +28,7 @@ graph TD
         direction TB
         F[1. Extract Principal, Action, Resource] --> G[2. Load Policies & Schema];
         G --> H[3. Construct CEDAR Entities];
-        H --> I[4. Call is_authorized[]];
+        H --> I["4. Call is_authorized[]"];
         I --> J{Decision};
     end
 
@@ -70,7 +70,7 @@ graph TD
         C5 --> C6["3.6: Create initial `config/policies.cedar` file"]
     end
     
-    subgraph Stage 4: Testing, Docs, & Finalization
+    subgraph "Stage 4: Testing, Docs, & Finalization"
        D1["4.1: Expand unit tests for dynamic schema and entity logic"] --> D2["4.2: Expand integration tests for common policy scenarios (owner, role, public)"]
        D2 --> D3["4.3: Update `DEVELOPER-GUIDE.md` and `authorization.md`"]
        D3 --> D4["4.4: Update `AGENTS.md` with guidelines for policy management"]
