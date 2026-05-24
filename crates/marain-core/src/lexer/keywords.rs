@@ -42,10 +42,11 @@ pub enum Keyword {
     Minus,
     Per,     // *
     Modulo,  // %
-    Maior,   // greater (part of `maior quam` ≥)
-    Minor,   // less    (part of `minor quam` ≤)
+    Aequat,  // == (standalone equality; also component of `non aequat` !=)
+    Maior,   // greater (part of `maior quam` >, `maior vel par` >=)
+    Minor,   // less    (part of `minor quam` <, `minor vel par` <=)
     Quam,    // than    (part of `maior/minor quam`)
-    Par,     // equal   (part of `minor vel par` ≤)
+    Par,     // equal   (part of `maior/minor vel par`)
     Divisus, // divided (part of `divisus per` /)
 
     // Detonation (sanctioned ALL-CAPS exception, PRD §4.2)
@@ -78,6 +79,7 @@ impl Keyword {
             "minus" => Self::Minus,
             "per" => Self::Per,
             "modulo" => Self::Modulo,
+            "aequat" => Self::Aequat,
             "maior" => Self::Maior,
             "minor" => Self::Minor,
             "quam" => Self::Quam,
@@ -113,6 +115,7 @@ impl Keyword {
             Self::Minus => "minus",
             Self::Per => "per",
             Self::Modulo => "modulo",
+            Self::Aequat => "aequat",
             Self::Maior => "maior",
             Self::Minor => "minor",
             Self::Quam => "quam",
@@ -172,6 +175,7 @@ mod tests {
             Keyword::Minus,
             Keyword::Per,
             Keyword::Modulo,
+            Keyword::Aequat,
             Keyword::Maior,
             Keyword::Minor,
             Keyword::Quam,

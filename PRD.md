@@ -52,7 +52,7 @@ In **Stage 2**, this rule relaxes: identifiers may take different inflections at
 
 **Out-of-phase exception: `DETONATIO!`.** Rust's `panic!` is rendered `DETONATIO!` — a nominative-case noun in ALL CAPS, deliberately violating the imperative-for-action-macros rule above. The visual discordance is the point: detonation is a terminal, unrecoverable act and the source should *not* read like surrounding code. This is the only sanctioned exception to the case-and-mood table; further exceptions require explicit justification of equivalent semantic weight.
 
-**Operators are Latin function words, not symbols.** Marain replaces `=`, `==`, `<`, `+`, `&&`, etc. with the appropriate Latin verb (`est` "is", `fit` "becomes"), preposition (`per` "by", `plus` "more"), or conjunction (`et` "and", `vel` "or") — see §4.4 for the full table. Assignment vs. equality is disambiguated by *verb choice* (`est` for initialization / `==`, `fit` for reassignment), not by token shape (`=` vs `==`). Precedence and associativity inherit from Rust verbatim.
+**Operators are Latin function words, not symbols.** Marain replaces `=`, `==`, `<`, `+`, `&&`, etc. with the appropriate Latin verb (`est` "is", `fit` "becomes", `aequat` "equals"), preposition (`per` "by", `plus` "more"), or conjunction (`et` "and", `vel` "or") — see §4.4 for the full table. Assignment vs. equality is disambiguated by *verb choice* (`est` for initialization, `fit` for reassignment, `aequat` for comparison), not by token shape (`=` vs `==`). Precedence and associativity inherit from Rust verbatim.
 
 **Identifier sigils are a third orthographic layer** beyond declensions and verb moods. Every variable reference carries `@` (mutable) or `^` (immutable) as its first character — see §4.5. This is a Marain-original convention, not Latin grammar; it earns its keep by making mutability visible at every use site and by disambiguating user-named identifiers from the dense vocabulary of Latin keywords and operator words.
 
@@ -92,8 +92,8 @@ Marain expresses all of Rust's operators as Latin function words. Symbol-form op
 | ---------------- | ------------------- | ----------------------------------------- |
 | `=` (init)       | `est`               | indicative copula ("is")                  |
 | `=` (reassign)   | `fit`               | indicative present ("becomes")            |
-| `==`             | `est`               | indicative copula, expression position    |
-| `!=`             | `non est`           | negated copula                            |
+| `==`             | `aequat`            | 3rd-sg. present indicative active of `aequare`, "equals" |
+| `!=`             | `non aequat`        | negated equality                          |
 | `<`              | `minor quam`        | adjective + "than"                        |
 | `<=`             | `minor vel par`     | "less or equal"                           |
 | `>`              | `maior quam`        | adjective + "than"                        |
@@ -108,11 +108,11 @@ Marain expresses all of Rust's operators as Latin function words. Symbol-form op
 | `!`              | `non`               | adverb (negation)                         |
 | `true` / `false` | `verum` / `falsum`  | —                                         |
 
-**Multi-word operators.** `maior quam`, `divisus per`, `non est`, `minor vel par`, `maior vel par` are recognized at the parser level via a fixed phrase table; the lexer emits one token per word. The component words (`quam`, `vel`, `par`, `divisus`, `per`, `non`, …) are reserved keywords and may not be used as identifiers.
+**Multi-word operators.** `maior quam`, `divisus per`, `non aequat`, `minor vel par`, `maior vel par` are recognized at the parser level via a fixed phrase table; the lexer emits one token per word. The component words (`quam`, `vel`, `par`, `divisus`, `per`, `non`, `aequat`, …) are reserved keywords and may not be used as identifiers. (`aequat` is also a standalone keyword — the equality operator — not only a phrase component.)
 
 **Precedence and associativity inherit from Rust verbatim.** `a plus b per c` parses as `a plus (b per c)`. The author memorizes Rust precedence anyway; Marain borrows the same table.
 
-**Assignment vs. equality is disambiguated by verb choice, not by token shape.** `sit x est 5` initializes, `x fit 5` reassigns, `si x est 5` compares. The `=` / `==` confusion class disappears — at the cost of memorizing which Latin verb carries which sense.
+**Assignment vs. equality is disambiguated by verb choice, not by token shape.** `sit ^x est 5` initializes, `^x fit 5` reassigns, `si ^x aequat 5` compares. The `=` / `==` confusion class disappears — at the cost of memorizing which Latin verb carries which sense.
 
 ### 4.5 Identifier Sigils
 
