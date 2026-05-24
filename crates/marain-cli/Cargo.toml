@@ -1,0 +1,21 @@
+[package]
+name = "marain-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "marain"
+path = "src/main.rs"
+
+[dependencies]
+marain-core = { path = "../marain-core" }
+# Pinned per PRD §9 N-1 / 30-day rule (today 2026-05-23; latest at pin time
+# was 4.6.1 released 2026-04-15; 4.5.61 is the top of the N-1 minor line,
+# released 2026-03-12). Use `=` for exact-version pin; Cargo.lock holds the
+# verification hash.
+clap = { version = "=4.5.61", features = ["derive"] }
+
+[lints]
+workspace = true

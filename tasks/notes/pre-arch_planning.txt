@@ -1,0 +1,566 @@
+Good shape for a new project. Before any code lands we need to agree on the bones, because every later feature reuses
+  the same boxes. I'll run this like the PRD sessions — one design round at a time, recommendation + trade-off + decision
+  — so the cognitive load stays manageable. Stop me whenever something feels off.
+
+  Mental model — the canonical transpiler pipeline
+
+  source bytes (.lat)
+    ─▶ lexer    ─▶ tokens    (each carrying a Span)
+    ─▶ parser   ─▶ AST       (each node carrying a Span)
+    ─▶ [lower]  ─▶ IR        (Stage 2 only; v0.1 parses straight to emit-ready AST)
+    ─▶ emitter  ─▶ Rust source (a String)
+    ─▶ driver   ─▶ write shim crate, invoke cargo, forward stdout/stderr
+
+  Every box is hand-rolled in Rust (no external crates per §9). For Stage-1 hello-world (dic "salve, munde".) the entire
+  walk is small — likely ~400 LOC of working code. The shape matters more than the content because every later feature
+  reuses the same boxes.
+
+  Design rounds I see ahead
+
+  1. Skeleton — crate layout + initial module decomposition ← this round
+  2. Span & source-map — how source position is carried through every later phase
+  3. Error model — per-stage error enums vs. one flat facade
+  4. Lexer — token kinds for hello-world; module split to respect the 500-LOC ceiling
+  5. Parser + AST — recursive descent; AST shape (and the one Stage-2 hook)
+  6. Codegen + cargo shim — emission strategy + on-disk layout of the generated project
+  7. CLI + driver — hand-rolled arg parsing; marain build / marain run
+  8. Testing harness — behavioral end-to-end + per-phase unit tests
+
+  Concerns I'm carrying forward (none block v0.1, all worth a beat)
+
+  - (α) Stage 2's parser is a different animal. Hand-rolled recursive descent doesn't extend to free-word-order; Stage 2
+  will likely rewrite the parser entirely (Earley / GLR / case-driven assembly). The Stage 1 parser is a deliberate
+  throwaway — but our AST nodes should probably carry an optional inflection slot now so the node types survive the Stage
+  2 transition.
+  - (β) The 500-LOC ceiling bites the lexer first. Tokenizers grow fast as the keyword table accretes. Plan the split now
+  (scanner.rs / keywords.rs / strings.rs), not at the 480-LOC mark.
+  - (γ) The vendored Variabile runtime (§5). Not v0.1, but the codegen architecture needs an obvious injection point.
+  Three patterns: inline-at-codegen / runtime-crate-import / emit-support-module-verbatim-into-shim. I'd lean (c) for the
+  self-supporting story.
+  - (δ) Hand-rolled CLI parsing (no clap). ~50 LOC and easy to get subtly wrong on edge cases (--help, --version, unknown
+  flags). Worth a dedicated cli/args.rs, not freestyle in main.rs.
+  - (ε) Test strategy. Behavioral end-to-end is required (PRD §7). Golden-diff on emitted Rust text is fragile to
+  whitespace/formatting; treat it as a tripwire only. Per-phase unit tests + the e2e do most of the work.
+
+  Round 1 proposal — skeleton
+
+  A single crate, with lib.rs doing the work and main.rs as the thin CLI shim. Cargo will treat them as one library + one
+  binary, both named marain:
+
+  marain/
+    Cargo.toml
+    Cargo.lock
+    rust-toolchain.toml          # pin stable (TBD: which 1.8x?)
+    src/
+      lib.rs                      # crate root; module declarations + re-exports
+      main.rs                     # thin CLI shim — parses args, dispatches, forwards exit codes
+      source.rs                   # SourceFile + SourceMap (owns file bytes + line-break index)
+      span.rs                     # Span newtype (u32 start, u32 end)
+      error.rs                    # MarainError facade + Diagnostic rendering
+      lexer/
+        mod.rs                    # public API
+        scanner.rs                # byte/char-level scanning
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+      ast.rs                      # AST node types (every node carries Span)
+      emit/
+        mod.rs                    # AST → Rust string entrypoint
+        rust.rs                   # the actual templated emission
+        mod.rs                    # public API
+        scanner.rs                # byte/char-level scanning
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+      ast.rs                      # AST node types (every node carries Span)
+      emit/
+        mod.rs                    # AST → Rust string entrypoint
+        rust.rs                   # the actual templated emission
+      source.rs                   # SourceFile + SourceMap (owns file bytes + line-break index)
+      span.rs                     # Span newtype (u32 start, u32 end)
+      error.rs                    # MarainError facade + Diagnostic rendering
+      lexer/
+        mod.rs                    # public API
+        scanner.rs                # byte/char-level scanning
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+      ast.rs                      # AST node types (every node carries Span)
+      emit/
+        mod.rs                    # AST → Rust string entrypoint
+        rust.rs                   # the actual templated emission
+      shim/
+        mod.rs                    # generates the sibling Cargo project (Cargo.toml + src/main.rs)
+      cli/
+        mod.rs                    # subcommand dispatch
+        args.rs                   # hand-rolled arg parser
+        build_cmd.rs              # `marain build` body
+        run_cmd.rs                # `marain run` body
+    tests/
+      hello_world.rs              # e2e: build hello.lat, run it, assert "salve, munde" on stdout
+    docs/
+      lexicon.md                  # (PRD-referenced; will accrete as keywords resolve)
+
+  Why single crate, not a workspace? A workspace (separate crates/marain/ library + crates/marain-cli/ binary) buys a hard module boundary at the cost of a second Cargo.toml, a workspace root, and
+  more file churn. For v0.1 the boundary is unnecessary — lib.rs + main.rs in one crate satisfies CLAUDE.md's "thin CLI shim" requirement (the lib is the testable / embeddable surface; the bin is
+          +binding, an arithmetic expression) to surface anything the §10 risk row alluded to — before locking ARCH
+          +ITECTURE.md.
+       78 +3. **Defer-once-more decisions:** S1-5 through S1-12 are still open and may be deferred into ARCHITECTUR
+          +E.md or post-v0.1 planning per §12.
+       79 +4. **Optional disk renames:** working directory `~/code/rubigo` and Claude Code memory dir. Author's cal
+          +l — both have ergonomic and continuity trade-offs.
+       80 +5. **Stage 2 / S2-* gating round** is a future concern (post-v0.1); S2-4 and S2-7 are the largest design
+          + surfaces remaining there.
+       81
+       82  ## Open Tensions Worth Watching
+       83
+       76 -- **§4.2 table now has an inert majority** (five case rows that Stage 1 ignores). I offered to split int
+          -o "Stage 1 active rows" / "Stage 2 target rows" mini-tables; user didn't comment. Defer to next round bu
+          -t consider raising if they re-open §4.2.
+       77 -- **Stage 1 → Stage 2 migration UX** (S2-6) is the riskiest under-specified area — auto-decline-on-upgra
+          -de vs. user-confirms-each is a Big Design Decision the LSP architecture will hinge on.
+       78 -- **§4.4 operator vocabulary still PROPOSED** — no explicit user sign-off on individual word choices lik
+          -e `displosus per` etc. Lives in `docs/lexicon.md` (TBD); not blocking.
+       84 +- **§4.2 table now has an inert majority** (five case rows Stage 1 ignores). I offered to split into "St
+          +age 1 active rows" / "Stage 2 target rows" mini-tables in session 2; user didn't comment. Defer to next
+          +round but consider raising if §4.2 reopens.
+       85 +- **Stage 1 → Stage 2 migration UX** (S2-6) is still the riskiest under-specified area. Auto-decline-on-
+          +upgrade vs. user-confirms-each is a Big Design Decision the LSP architecture will hinge on.
+       86 +- **§4.4 operator vocabulary still PROPOSED** — no explicit user sign-off on individual word choices lik
+          +e `divisus per`. Lives in `docs/lexicon.md` (TBD); not blocking.
+       87  - **`mutabilis` removal sweep** (carried over from session 1) — word was removed from §4.3 binding rows
+           but might surface in other contexts. Grep before broader use.
+       80 -- **OQ 5 (verb voice)** newly deferred to Stage 2 — this might mean Stage 2 spec needs to address it bef
+          -ore declaring complete.
+       88 +- **S1-5 (verb voice)** newly deferred to Stage 2 — Stage 2 spec needs to address it before declaring co
+          +mplete.
+       89 +- **LLM-in-LSP (S2-7) is now a roadmap item** — track scope carefully; was deliberately not part of v0.1
+          + thinking and adds a whole new failure-mode class (hallucinated Latin polluting source).
+       90
+       82 -## Collaboration Patterns Observed (still hold from session 1, confirmed in session 2)
+       91 +## Collaboration Patterns Observed (carried forward and reconfirmed this session)
+       92
+       84 -- **Design rounds use `AskUserQuestion` with 2-4 options and `preview` field showing code samples.** Use
+          -d twice this session (operator vocabulary, panic verb); both produced quick decisions. `DETONATIO!` was
+          -chosen *because* of its "out of phase" violation of nearby rules — user explicitly values aesthetic disc
+          -ordance for semantic weight.
+       85 -- **Engage critically per `CLAUDE.md`.** Surface tradeoffs and concerns. User has reversed positions whe
+          -n arguments were sound; user has also reframed entire problems when I surfaced multiple failure angles (
+          -the §10 → §4.10 staging move is the headline example).
+       86 -- **Batch PRD edits.** This session executed ~15 sequential `Edit` calls in one focused push when implem
+          -enting the staging reframe. Anchors stay distinct, cross-references swept after each renumber.
+       87 -- **Ignore the task-tool nudge during pure design phase.** Appeared 4+ times this session; ignored. No i
+          -mplementation tasks exist beyond Task 0 in TODO.md.
+       93 +- **Design rounds use `AskUserQuestion` with 2-4 options and `preview` field showing code/diff samples.*
+          +* Used once this session (three-question batch: extension / numbering direction / Stage-2 fold-in scope)
+          + — produced a clean three-option-accepted result with the first-option-recommended pattern paying off.
+       94 +- **Engage critically per `CLAUDE.md`.** Surface tradeoffs and concerns. User has reversed positions whe
+          +n arguments were sound; reframes entire problems when multiple failure angles surface.
+       95 +- **Batch PRD edits.** This session executed ~10 sequential Edits across §4.10, §9, §10, §11, §12 in par
+          +allel where regions were disjoint. `replace_all` for the rename was a single sweep.
+       96 +- **Ignore the task-tool nudge during pure design or large edit-bursts.** Appeared twice this session; i
+          +gnored. TODO.md has the completed Task 0 entry but no in-flight tasks worth TaskCreate-ing.
+       97  - **Concise end-of-turn summaries.** 1-2 sentences max. List of changed sections is welcome; restating t
+           he changes themselves is not.
+       89 -- **One drilling question per round.** Multi-axis questions get split.
+       90 -- **User likes to be told what would happen "as a consequence."** When I flagged that the staging refram
+          -e would make the lexer simpler and the LSP load-bearing, those observations earned the reframe approval,
+          - not the reframe itself.
+       98 +- **One drilling question per round.** Multi-axis questions get batched into `AskUserQuestion` so the us
+          +er can answer them in one UI pass.
+       99 +- **User likes to be told what would happen "as a consequence."** When the morning's rename + Stage 2 fo
+          +ld-in surfaced specific consequences (Cargo.lock regen, on-disk dir rename being out-of-scope, JS-ecosys
+          +tem constraint cascading into §9), explicit articulation of consequences earned the green-light each tim
+          +e.
+      100
+      101  ## Tactical Notes
+      102
+       94 -- The "first to define is followed" general rule from session 1 was *demoted* to a Stage-1-only rule in
+          -session 2. If editing §4.2 again, preserve the staging scoping.
+      103 +- The "first to define is followed" general rule from session 1 is scoped to Stage 1 only. If editing §4
+          +.2 again, preserve the staging scoping.
+      104  - `DETONATIO!` is the only sanctioned all-caps macro; explicitly noted in §4.2 and §4.9. New all-caps ad
+           ditions require justification of equivalent semantic weight.
+       96 -- The user has not asked for memory writes via the auto-memory system. This session, I saved one feedbac
+          -k memory about the reframe-vs-push-through pattern — see `~/.claude/projects/-Users-john-code-rubigo/mem
+          -ory/`. Future sessions can lean on it without re-deriving the principle.
+       97 -- The PRD section numbers are now consistent at the §4.x level (1-10 with no gaps); only §11's mixed num
+          -bering scheme is dirty (Task 0).
+      105 +- The feedback memory at `~/.claude/projects/-Users-john-code-rubigo/memory/feedback_reframe_vs_push_thr
+          +ough.md` is universal-to-design-work, not Marain-specific. The historical reference to "the Rubigo PRD"
+          +is correct as of session 2 — has been annotated with a rename note rather than rewritten.
+      106 +- After rename, **`cargo check` is the cleanest way to regenerate `Cargo.lock`** with the new package na
+          +me (don't hand-edit `Cargo.lock`).
+      107 +- The PRD section numbers are consistent at the §4.x level (1-10 with no gaps); §11 now uses prefixed la
+          +bels (`S1-*` and `S2-*`) throughout — no more flat numbered list. Markdown rendering: paragraph-form, no
+          +t auto-numbered list.
+
+  Searched for 1 pattern, wrote 1 memory (ctrl+o to expand)
+
+⏺ Bash(cargo check 2>&1 | tail -20)
+  ⎿      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+
+⏺ All clean. Verification:
+
+  - cargo check passed — Cargo.lock regenerated with the new package name (no stale rubigo left in any lock/source file).
+  - Remaining rubigo mentions are all intentional: rename-history notes in README.md / CLAUDE.md / TODO.md, and references
+   to the on-disk path ~/code/rubigo/ (not renamed) in CONTINUITY.md.
+
+  Landed this morning:
+
+  - Rename Rubigo → Marain across Cargo.toml, Cargo.lock, README.md, CLAUDE.md (and the AGENTS.md symlink), PRD.md body,
+  tasks/*.md, and the feedback memory's session-2 reference (historical phrasing preserved). Banks attribution added to
+  CLAUDE.md preamble and README.md. Extensions .lat/.latin unchanged.
+  - PRD §11 renumbered — Stage 1 retro-tagged S1-1..S1-12; body cross-refs (§4.3, §4.5, §10, §12) swept.
+  - PRD §4.10 gained two paragraphs: editor targets (Zed → Lapce → Helix; WASM extensions for the first two; native LSP
+  for Helix; standalone Rust LSP over stdio) and a deterministic-first / LLM-later suggestion architecture.
+  - PRD §9 gained a Rust-only-ecosystem constraint (no JS/Node/npm).
+  - PRD §10 added one new risk row (editor-niche lock-in) and bumped LSP scope-creep to Medium-High to absorb the
+  LLM-layer scope.
+  - PRD §11 added S2-7 (hybrid suggestion architecture) and gave S2-4 a partial answer.
+
+  Two small consequences worth flagging:
+  - The binary now builds to target/debug/marain; the old target/debug/rubigo will sit until you cargo clean.
+  - On-disk dir (~/code/rubigo) and Claude Code memory dir (-Users-john-code-rubigo) are still under the old name —
+  they're path-encoded and renaming them is your call (and would orphan the existing memory unless moved by hand).
+
+  Stage 1 §12 gates are still met; the natural next move is either drafting ARCHITECTURE.md or paper-testing Stage 1 with
+  something slightly larger than hello-world.
+
+✻ Brewed for 9m 17s
+
+❯ /rename New Marain
+  ⎿  Session renamed to: New Marain
+
+❯ Let's start on the architecture.  I've never done langauge or transpiler design, so I'm leaning heavily on your
+  knowledge, but try to surface concerns/blockers and we can talk them through.
+
+⏺ Good shape for a new project. Before any code lands we need to agree on the bones, because every later feature reuses
+  the same boxes. I'll run this like the PRD sessions — one design round at a time, recommendation + trade-off + decision
+  — so the cognitive load stays manageable. Stop me whenever something feels off.
+
+  Mental model — the canonical transpiler pipeline
+
+  source bytes (.lat)
+    ─▶ lexer    ─▶ tokens    (each carrying a Span)
+    ─▶ parser   ─▶ AST       (each node carrying a Span)
+    ─▶ [lower]  ─▶ IR        (Stage 2 only; v0.1 parses straight to emit-ready AST)
+    ─▶ emitter  ─▶ Rust source (a String)
+    ─▶ driver   ─▶ write shim crate, invoke cargo, forward stdout/stderr
+
+  Every box is hand-rolled in Rust (no external crates per §9). For Stage-1 hello-world (dic "salve, munde".) the entire
+  walk is small — likely ~400 LOC of working code. The shape matters more than the content because every later feature
+  reuses the same boxes.
+
+  Design rounds I see ahead
+
+  1. Skeleton — crate layout + initial module decomposition ← this round
+  2. Span & source-map — how source position is carried through every later phase
+  3. Error model — per-stage error enums vs. one flat facade
+  4. Lexer — token kinds for hello-world; module split to respect the 500-LOC ceiling
+  5. Parser + AST — recursive descent; AST shape (and the one Stage-2 hook)
+  6. Codegen + cargo shim — emission strategy + on-disk layout of the generated project
+  7. CLI + driver — hand-rolled arg parsing; marain build / marain run
+  8. Testing harness — behavioral end-to-end + per-phase unit tests
+
+  Concerns I'm carrying forward (none block v0.1, all worth a beat)
+
+  - (α) Stage 2's parser is a different animal. Hand-rolled recursive descent doesn't extend to free-word-order; Stage 2
+  will likely rewrite the parser entirely (Earley / GLR / case-driven assembly). The Stage 1 parser is a deliberate
+  throwaway — but our AST nodes should probably carry an optional inflection slot now so the node types survive the Stage
+  2 transition.
+  - (β) The 500-LOC ceiling bites the lexer first. Tokenizers grow fast as the keyword table accretes. Plan the split now
+  (scanner.rs / keywords.rs / strings.rs), not at the 480-LOC mark.
+  - (γ) The vendored Variabile runtime (§5). Not v0.1, but the codegen architecture needs an obvious injection point.
+  Three patterns: inline-at-codegen / runtime-crate-import / emit-support-module-verbatim-into-shim. I'd lean (c) for the
+  self-supporting story.
+  - (δ) Hand-rolled CLI parsing (no clap). ~50 LOC and easy to get subtly wrong on edge cases (--help, --version, unknown
+  flags). Worth a dedicated cli/args.rs, not freestyle in main.rs.
+  - (ε) Test strategy. Behavioral end-to-end is required (PRD §7). Golden-diff on emitted Rust text is fragile to
+  whitespace/formatting; treat it as a tripwire only. Per-phase unit tests + the e2e do most of the work.
+
+  Round 1 proposal — skeleton
+
+  A single crate, with lib.rs doing the work and main.rs as the thin CLI shim. Cargo will treat them as one library + one
+  binary, both named marain:
+
+  marain/
+    Cargo.toml
+    Cargo.lock
+    rust-toolchain.toml          # pin stable (TBD: which 1.8x?)
+    src/
+      lib.rs                      # crate root; module declarations + re-exports
+      main.rs                     # thin CLI shim — parses args, dispatches, forwards exit codes
+      source.rs                   # SourceFile + SourceMap (owns file bytes + line-break index)
+      span.rs                     # Span newtype (u32 start, u32 end)
+      error.rs                    # MarainError facade + Diagnostic rendering
+      lexer/
+        mod.rs                    # public API
+        scanner.rs                # byte/char-level scanning
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+      ast.rs                      # AST node types (every node carries Span)
+      emit/
+        mod.rs                    # AST → Rust string entrypoint
+        rust.rs                   # the actual templated emission
+      shim/
+        mod.rs                    # generates the sibling Cargo project (Cargo.toml + src/main.rs)
+      cli/
+        mod.rs                    # subcommand dispatch
+        args.rs                   # hand-rolled arg parser
+        build_cmd.rs              # `marain build` body
+        run_cmd.rs                # `marain run` body
+    tests/
+      hello_world.rs              # e2e: build hello.lat, run it, assert "salve, munde" on stdout
+    docs/
+      lexicon.md                  # (PRD-referenced; will accrete as keywords resolve)
+
+  Why single crate, not a workspace? A workspace (separate crates/marain/ library + crates/marain-cli/ binary) buys a hard module boundary at the cost of a second Cargo.toml, a workspace root, and
+  more file churn. For v0.1 the boundary is unnecessary — lib.rs + main.rs in one crate satisfies CLAUDE.md's "thin CLI shim" requirement (the lib is the testable / embeddable surface; the bin is
+       81
+       82  ## Open Tensions Worth Watching
+       83
+       76 -- **§4.2 table now has an inert majority** (five case rows that Stage 1 ignores). I offered to split int
+          -o "Stage 1 active rows" / "Stage 2 target rows" mini-tables; user didn't comment. Defer to next round bu
+          -t consider raising if they re-open §4.2.
+       77 -- **Stage 1 → Stage 2 migration UX** (S2-6) is the riskiest under-specified area — auto-decline-on-upgra
+          -de vs. user-confirms-each is a Big Design Decision the LSP architecture will hinge on.
+       78 -- **§4.4 operator vocabulary still PROPOSED** — no explicit user sign-off on individual word choices lik
+          -e `displosus per` etc. Lives in `docs/lexicon.md` (TBD); not blocking.
+       84 +- **§4.2 table now has an inert majority** (five case rows Stage 1 ignores). I offered to split into "St
+          +age 1 active rows" / "Stage 2 target rows" mini-tables in session 2; user didn't comment. Defer to next
+          +round but consider raising if §4.2 reopens.
+       85 +- **Stage 1 → Stage 2 migration UX** (S2-6) is still the riskiest under-specified area. Auto-decline-on-
+          +upgrade vs. user-confirms-each is a Big Design Decision the LSP architecture will hinge on.
+       86 +- **§4.4 operator vocabulary still PROPOSED** — no explicit user sign-off on individual word choices lik
+          +e `divisus per`. Lives in `docs/lexicon.md` (TBD); not blocking.
+       87  - **`mutabilis` removal sweep** (carried over from session 1) — word was removed from §4.3 binding rows
+           but might surface in other contexts. Grep before broader use.
+       80 -- **OQ 5 (verb voice)** newly deferred to Stage 2 — this might mean Stage 2 spec needs to address it bef
+          -ore declaring complete.
+       88 +- **S1-5 (verb voice)** newly deferred to Stage 2 — Stage 2 spec needs to address it before declaring co
+          +mplete.
+       89 +- **LLM-in-LSP (S2-7) is now a roadmap item** — track scope carefully; was deliberately not part of v0.1
+          + thinking and adds a whole new failure-mode class (hallucinated Latin polluting source).
+       90
+       82 -## Collaboration Patterns Observed (still hold from session 1, confirmed in session 2)
+       91 +## Collaboration Patterns Observed (carried forward and reconfirmed this session)
+       92
+       84 -- **Design rounds use `AskUserQuestion` with 2-4 options and `preview` field showing code samples.** Use
+          -d twice this session (operator vocabulary, panic verb); both produced quick decisions. `DETONATIO!` was
+          -chosen *because* of its "out of phase" violation of nearby rules — user explicitly values aesthetic disc
+          -ordance for semantic weight.
+       85 -- **Engage critically per `CLAUDE.md`.** Surface tradeoffs and concerns. User has reversed positions whe
+          -n arguments were sound; user has also reframed entire problems when I surfaced multiple failure angles (
+          -the §10 → §4.10 staging move is the headline example).
+       86 -- **Batch PRD edits.** This session executed ~15 sequential `Edit` calls in one focused push when implem
+          -enting the staging reframe. Anchors stay distinct, cross-references swept after each renumber.
+       87 -- **Ignore the task-tool nudge during pure design phase.** Appeared 4+ times this session; ignored. No i
+          -mplementation tasks exist beyond Task 0 in TODO.md.
+       93 +- **Design rounds use `AskUserQuestion` with 2-4 options and `preview` field showing code/diff samples.*
+          +* Used once this session (three-question batch: extension / numbering direction / Stage-2 fold-in scope)
+          + — produced a clean three-option-accepted result with the first-option-recommended pattern paying off.
+       94 +- **Engage critically per `CLAUDE.md`.** Surface tradeoffs and concerns. User has reversed positions whe
+          +n arguments were sound; reframes entire problems when multiple failure angles surface.
+       95 +- **Batch PRD edits.** This session executed ~10 sequential Edits across §4.10, §9, §10, §11, §12 in par
+          +allel where regions were disjoint. `replace_all` for the rename was a single sweep.
+       96 +- **Ignore the task-tool nudge during pure design or large edit-bursts.** Appeared twice this session; i
+          +gnored. TODO.md has the completed Task 0 entry but no in-flight tasks worth TaskCreate-ing.
+       97  - **Concise end-of-turn summaries.** 1-2 sentences max. List of changed sections is welcome; restating t
+           he changes themselves is not.
+       89 -- **One drilling question per round.** Multi-axis questions get split.
+       90 -- **User likes to be told what would happen "as a consequence."** When I flagged that the staging refram
+          -e would make the lexer simpler and the LSP load-bearing, those observations earned the reframe approval,
+          - not the reframe itself.
+       98 +- **One drilling question per round.** Multi-axis questions get batched into `AskUserQuestion` so the us
+          +er can answer them in one UI pass.
+       99 +- **User likes to be told what would happen "as a consequence."** When the morning's rename + Stage 2 fo
+          +ld-in surfaced specific consequences (Cargo.lock regen, on-disk dir rename being out-of-scope, JS-ecosys
+          +tem constraint cascading into §9), explicit articulation of consequences earned the green-light each tim
+          +e.
+      100
+      101  ## Tactical Notes
+      102
+       94 -- The "first to define is followed" general rule from session 1 was *demoted* to a Stage-1-only rule in
+          -session 2. If editing §4.2 again, preserve the staging scoping.
+      103 +- The "first to define is followed" general rule from session 1 is scoped to Stage 1 only. If editing §4
+          +.2 again, preserve the staging scoping.
+      104  - `DETONATIO!` is the only sanctioned all-caps macro; explicitly noted in §4.2 and §4.9. New all-caps ad
+           ditions require justification of equivalent semantic weight.
+       96 -- The user has not asked for memory writes via the auto-memory system. This session, I saved one feedbac
+          -k memory about the reframe-vs-push-through pattern — see `~/.claude/projects/-Users-john-code-rubigo/mem
+          -ory/`. Future sessions can lean on it without re-deriving the principle.
+       97 -- The PRD section numbers are now consistent at the §4.x level (1-10 with no gaps); only §11's mixed num
+          -bering scheme is dirty (Task 0).
+      105 +- The feedback memory at `~/.claude/projects/-Users-john-code-rubigo/memory/feedback_reframe_vs_push_thr
+          +ough.md` is universal-to-design-work, not Marain-specific. The historical reference to "the Rubigo PRD"
+          +is correct as of session 2 — has been annotated with a rename note rather than rewritten.
+      106 +- After rename, **`cargo check` is the cleanest way to regenerate `Cargo.lock`** with the new package na
+          +me (don't hand-edit `Cargo.lock`).
+      107 +- The PRD section numbers are consistent at the §4.x level (1-10 with no gaps); §11 now uses prefixed la
+          +bels (`S1-*` and `S2-*`) throughout — no more flat numbered list. Markdown rendering: paragraph-form, no
+          +t auto-numbered list.
+
+  Searched for 1 pattern, wrote 1 memory (ctrl+o to expand)
+
+⏺ Bash(cargo check 2>&1 | tail -20)
+  ⎿      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+
+⏺ All clean. Verification:
+
+  - cargo check passed — Cargo.lock regenerated with the new package name (no stale rubigo left in any lock/source file).
+  - Remaining rubigo mentions are all intentional: rename-history notes in README.md / CLAUDE.md / TODO.md, and references
+   to the on-disk path ~/code/rubigo/ (not renamed) in CONTINUITY.md.
+
+  Landed this morning:
+
+  - Rename Rubigo → Marain across Cargo.toml, Cargo.lock, README.md, CLAUDE.md (and the AGENTS.md symlink), PRD.md body,
+  tasks/*.md, and the feedback memory's session-2 reference (historical phrasing preserved). Banks attribution added to
+  CLAUDE.md preamble and README.md. Extensions .lat/.latin unchanged.
+  - PRD §11 renumbered — Stage 1 retro-tagged S1-1..S1-12; body cross-refs (§4.3, §4.5, §10, §12) swept.
+  - PRD §4.10 gained two paragraphs: editor targets (Zed → Lapce → Helix; WASM extensions for the first two; native LSP
+  for Helix; standalone Rust LSP over stdio) and a deterministic-first / LLM-later suggestion architecture.
+  - PRD §9 gained a Rust-only-ecosystem constraint (no JS/Node/npm).
+  - PRD §10 added one new risk row (editor-niche lock-in) and bumped LSP scope-creep to Medium-High to absorb the
+  LLM-layer scope.
+  - PRD §11 added S2-7 (hybrid suggestion architecture) and gave S2-4 a partial answer.
+
+  Two small consequences worth flagging:
+  - The binary now builds to target/debug/marain; the old target/debug/rubigo will sit until you cargo clean.
+  - On-disk dir (~/code/rubigo) and Claude Code memory dir (-Users-john-code-rubigo) are still under the old name —
+  they're path-encoded and renaming them is your call (and would orphan the existing memory unless moved by hand).
+
+  Stage 1 §12 gates are still met; the natural next move is either drafting ARCHITECTURE.md or paper-testing Stage 1 with
+  something slightly larger than hello-world.
+
+✻ Brewed for 9m 17s
+
+❯ /rename New Marain
+  ⎿  Session renamed to: New Marain
+
+❯ Let's start on the architecture.  I've never done langauge or transpiler design, so I'm leaning heavily on your
+  knowledge, but try to surface concerns/blockers and we can talk them through.
+
+⏺ Good shape for a new project. Before any code lands we need to agree on the bones, because every later feature reuses
+  the same boxes. I'll run this like the PRD sessions — one design round at a time, recommendation + trade-off + decision
+  — so the cognitive load stays manageable. Stop me whenever something feels off.
+
+  Mental model — the canonical transpiler pipeline
+
+  source bytes (.lat)
+    ─▶ lexer    ─▶ tokens    (each carrying a Span)
+    ─▶ parser   ─▶ AST       (each node carrying a Span)
+    ─▶ [lower]  ─▶ IR        (Stage 2 only; v0.1 parses straight to emit-ready AST)
+    ─▶ emitter  ─▶ Rust source (a String)
+    ─▶ driver   ─▶ write shim crate, invoke cargo, forward stdout/stderr
+
+  Every box is hand-rolled in Rust (no external crates per §9). For Stage-1 hello-world (dic "salve, munde".) the entire
+  walk is small — likely ~400 LOC of working code. The shape matters more than the content because every later feature
+  reuses the same boxes.
+
+  Design rounds I see ahead
+
+  1. Skeleton — crate layout + initial module decomposition ← this round
+  2. Span & source-map — how source position is carried through every later phase
+  3. Error model — per-stage error enums vs. one flat facade
+  4. Lexer — token kinds for hello-world; module split to respect the 500-LOC ceiling
+  5. Parser + AST — recursive descent; AST shape (and the one Stage-2 hook)
+  6. Codegen + cargo shim — emission strategy + on-disk layout of the generated project
+  7. CLI + driver — hand-rolled arg parsing; marain build / marain run
+  8. Testing harness — behavioral end-to-end + per-phase unit tests
+
+  Concerns I'm carrying forward (none block v0.1, all worth a beat)
+
+  - (α) Stage 2's parser is a different animal. Hand-rolled recursive descent doesn't extend to free-word-order; Stage 2
+  will likely rewrite the parser entirely (Earley / GLR / case-driven assembly). The Stage 1 parser is a deliberate
+  throwaway — but our AST nodes should probably carry an optional inflection slot now so the node types survive the Stage
+  2 transition.
+  - (β) The 500-LOC ceiling bites the lexer first. Tokenizers grow fast as the keyword table accretes. Plan the split now
+  (scanner.rs / keywords.rs / strings.rs), not at the 480-LOC mark.
+  - (γ) The vendored Variabile runtime (§5). Not v0.1, but the codegen architecture needs an obvious injection point.
+  Three patterns: inline-at-codegen / runtime-crate-import / emit-support-module-verbatim-into-shim. I'd lean (c) for the
+  self-supporting story.
+  - (δ) Hand-rolled CLI parsing (no clap). ~50 LOC and easy to get subtly wrong on edge cases (--help, --version, unknown
+  flags). Worth a dedicated cli/args.rs, not freestyle in main.rs.
+  - (ε) Test strategy. Behavioral end-to-end is required (PRD §7). Golden-diff on emitted Rust text is fragile to
+  whitespace/formatting; treat it as a tripwire only. Per-phase unit tests + the e2e do most of the work.
+
+  Round 1 proposal — skeleton
+
+  A single crate, with lib.rs doing the work and main.rs as the thin CLI shim. Cargo will treat them as one library + one
+  binary, both named marain:
+
+  marain/
+    Cargo.toml
+    Cargo.lock
+    rust-toolchain.toml          # pin stable (TBD: which 1.8x?)
+    src/
+      lib.rs                      # crate root; module declarations + re-exports
+      main.rs                     # thin CLI shim — parses args, dispatches, forwards exit codes
+      source.rs                   # SourceFile + SourceMap (owns file bytes + line-break index)
+      span.rs                     # Span newtype (u32 start, u32 end)
+      error.rs                    # MarainError facade + Diagnostic rendering
+      lexer/
+        mod.rs                    # public API
+        scanner.rs                # byte/char-level scanning
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+        keywords.rs               # the keyword/no-punct-macro table
+      token.rs                    # TokenKind enum + Token struct
+      parser/
+        mod.rs                    # recursive descent driver
+        grammar.rs                # one fn per production (small for v0.1)
+      ast.rs                      # AST node types (every node carries Span)
+      emit/
+        mod.rs                    # AST → Rust string entrypoint
+        rust.rs                   # the actual templated emission
+      shim/
+        mod.rs                    # generates the sibling Cargo project (Cargo.toml + src/main.rs)
+      cli/
+        mod.rs                    # subcommand dispatch
+        args.rs                   # hand-rolled arg parser
+        build_cmd.rs              # `marain build` body
+        run_cmd.rs                # `marain run` body
+    tests/
+      hello_world.rs              # e2e: build hello.lat, run it, assert "salve, munde" on stdout
+    docs/
+      lexicon.md                  # (PRD-referenced; will accrete as keywords resolve)
+
+  Why single crate, not a workspace? A workspace (separate crates/marain/ library + crates/marain-cli/ binary) buys a hard module boundary at the cost of a second Cargo.toml, a workspace root, and
+  more file churn. For v0.1 the boundary is unnecessary — lib.rs + main.rs in one crate satisfies CLAUDE.md's "thin CLI shim" requirement (the lib is the testable / embeddable surface; the bin is
+  ~50 LOC of arg dispatch). We can graduate to a workspace later if Stage 2's LSP wants to depend on the library independently of the CLI.
+
+  Why split lexer/ and parser/ into directories already? Per concern (β) — they're the modules most likely to brush the 500-LOC ceiling first. Starting them as directories lets us add strings.rs,
+  numbers.rs, etc. without restructure pain later.
+
+  Why separate source.rs and span.rs? Spans are tiny and pervasive (every token, every AST node). The SourceMap is the heavyweight thing that owns the file bytes and the line-break index for
+  diagnostic rendering. Different change rates, different dependency profiles, different blast radius.
+
+  Why shim/ as its own module? Generating a Cargo project on disk is a chunky responsibility (template strings for Cargo.toml, layout decisions, eventually the vendored runtime injection per
+  concern γ). It deserves its own home from day one.
+
+  One genuine fork worth deciding now: where does the generated cargo shim live on disk?
+
+  This is user-visible and changing it later means breaking everyone's mental model.

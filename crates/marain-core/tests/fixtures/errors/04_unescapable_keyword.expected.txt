@@ -1,0 +1,1 @@
+04_unescapable_keyword.lat:1:5: error: identifier `self` is a Rust reserved word with no raw-identifier escape; rename the Marain binding

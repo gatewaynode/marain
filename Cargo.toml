@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/marain-core",
+    "crates/marain-cli",
+]
+default-members = ["crates/marain-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.1"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
