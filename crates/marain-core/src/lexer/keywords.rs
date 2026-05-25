@@ -26,11 +26,18 @@ pub enum Keyword {
     Falsum, // false
 
     // Control / declarations
-    Redde,   // return
-    Functio, // fn
-    Si,      // if
-    Dum,     // while
-    Pro,     // for
+    Redde,      // return
+    Functio,    // fn
+    Si,         // if
+    Aliter,     // else (also `aliter si` = else if)
+    Dum,        // while
+    Pro,        // for
+    Dat,        // -> (function return-type indicator; PRD §4.11)
+    Semper,     // loop (Rust infinite loop; adverb "always")
+    Interrumpe, // break (imperative 2nd-sg.)
+    Continua,   // continue (imperative 2nd-sg.)
+    In,         // for-binding word ("pro ^x in ^xs")
+    Nihil,      // empty block / pass
 
     // Logical operators
     Et,  // &&
@@ -70,8 +77,15 @@ impl Keyword {
             "redde" => Self::Redde,
             "functio" => Self::Functio,
             "si" => Self::Si,
+            "aliter" => Self::Aliter,
             "dum" => Self::Dum,
             "pro" => Self::Pro,
+            "dat" => Self::Dat,
+            "semper" => Self::Semper,
+            "interrumpe" => Self::Interrumpe,
+            "continua" => Self::Continua,
+            "in" => Self::In,
+            "nihil" => Self::Nihil,
             "et" => Self::Et,
             "vel" => Self::Vel,
             "non" => Self::Non,
@@ -106,8 +120,15 @@ impl Keyword {
             Self::Redde => "redde",
             Self::Functio => "functio",
             Self::Si => "si",
+            Self::Aliter => "aliter",
             Self::Dum => "dum",
             Self::Pro => "pro",
+            Self::Dat => "dat",
+            Self::Semper => "semper",
+            Self::Interrumpe => "interrumpe",
+            Self::Continua => "continua",
+            Self::In => "in",
+            Self::Nihil => "nihil",
             Self::Et => "et",
             Self::Vel => "vel",
             Self::Non => "non",
@@ -166,8 +187,15 @@ mod tests {
             Keyword::Redde,
             Keyword::Functio,
             Keyword::Si,
+            Keyword::Aliter,
             Keyword::Dum,
             Keyword::Pro,
+            Keyword::Dat,
+            Keyword::Semper,
+            Keyword::Interrumpe,
+            Keyword::Continua,
+            Keyword::In,
+            Keyword::Nihil,
             Keyword::Et,
             Keyword::Vel,
             Keyword::Non,

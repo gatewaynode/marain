@@ -43,7 +43,7 @@ Marain's Latin-grammar surface is **staged** (see §4.10). The table below descr
 | **Accusative case** (noun)       | Call arguments, `match` scrutinees                              | `dic textum` (say the-text)                       |
 | **Ablative case** (noun)         | Trait bounds, lifetime annotations                              | `cum Ostentatione` (with display)                 |
 | **Subjunctive mood** (verb)      | Bindings — "let it be"                                          | `sit` (`let`), `sit mutabilis` (`let mut`)        |
-| **Imperative mood** (verb)       | Macros that perform an action                                   | `dic!` (println), `pone!` (insert), `interrumpe!` (break) |
+| **Imperative mood** (verb)       | Macros and control-flow keywords that perform an action         | `dic!` (println), `pone!` (insert); `interrumpe` (break), `continua` (continue) |
 | **Indicative mood** (verb)       | Statements / functions that report or compute                   | `functio` bodies, `redde` (return)                |
 
 **Declaration-site wins (Stage 1 rule).** In Stage 1, an identifier is inflected *once*, at its first introduction, into the nominative. Every subsequent reference echoes that form unchanged — the lexer does not re-inflect per use-site role. This is **"first to define is followed"** — it accepts Latin-grammatical roughness downstream in exchange for stable identifier spelling and a dramatically simpler lexer (one form per identifier, recorded at declaration; later occurrences must match it verbatim).
@@ -196,7 +196,7 @@ This is intentionally **not** Python-style newline-termination. The period is th
 - Multi-line expressions need no continuation marker (no backslash, no implicit-paren rule). The lexer keeps reading until it sees a period at top expression-nesting depth.
 - Indentation (§4.6) still defines *block* membership, but no longer carries *statement* boundaries. The two concerns are orthogonal.
 
-**Control-structure heads (`si …`, `dum …`, `pro …`) terminator is TBD** — likely a colon `:` (Python-style block introducer) or an implicit "head ends when the indented block begins." Deferred until the first control-flow construct lands.
+**Control-structure heads end with a colon `:`.** `si <cond> :`, `dum <cond> :`, `pro <binding> :`, `semper :`, and `functio <sig> :` all use the same single-character block introducer; the body is the indented block that follows. Resolved 2026-05-25 (closing S1-2's leftover); see §4.11 for the v0.2 syntax.
 
 ### 4.9 Identifier Lexical Rules
 
@@ -221,6 +221,88 @@ The **LSP is the primary pedagogical surface** for Stage 2 and is no longer a no
 **Suggestion engines (deterministic + cognitive).** The Stage 2 LSP is expected to host two suggestion layers. The **deterministic** layer is driven directly off the Latin grammar spec: always-correct declension and conjugation alternatives, grammar-violation diagnostics, completion of inflected forms. It is required and ships first. The **cognitive / LLM** layer is a longer-horizon addition: it proposes stylistic and pedagogically-shaped reformulations ("how a Silver-Age author might phrase this clause") that cannot be derived mechanically from grammar rules alone. The deterministic core must be solid before LLM-layer work begins, and the LLM layer must remain optional and clearly visually distinguished from deterministic suggestions in editor UX (see S2-7).
 
 **Stage 3 — Rust target.** Stages 1 and 2 both lower into a common simplified AST. The transpiler emits Rust source from this AST and invokes `cargo`/`rustc` to produce the executable (see §5 for mechanics). Stage 3 is mechanical and stage-symmetric — the source's grammar richness has been fully resolved by the time it reaches Stage 3.
+
+### 4.11 Control Flow & Functions (v0.2)
+
+v0.2 extends Stage 1 with function declarations, conditional / loop constructs, indented blocks, and the supporting keywords. Seven new Marain keywords land — `dat`, `semper`, `interrumpe`, `continua`, `in`, `nihil`, `aliter` — plus the structural `:` block-head terminator (resolving S1-2's leftover, see §4.8) and the `..` / `..=` range punctuation borrowed from Rust.
+
+#### 4.11.1 Function declarations
+
+```
+functio <nomen>(<sigiled-name>: <Tipus>, ...) dat <ReturnTipus> :
+    <body statements>
+```
+
+- `functio` introduces the declaration (reserved in v0.1; PRD §4.2).
+- Parameters use Rust-style parens around comma-separated `<sigiled-name>: <Tipus>` pairs. Stage 1 uses nominative inflection per "first to define is followed" (§4.2); Stage 2 will activate dative.
+- `dat` ("gives", 3rd-sg. present indicative active of `dare`) is the return-type indicator — single-word keyword, parallel verb form with `est` / `fit` / `aequat`. Omit the `dat <Tipus>` clause for unit return.
+- Head terminates with `:` (§4.8); body is the indented block that follows.
+- `redde <expr>.` returns a value.
+
+Examples:
+
+```
+functio saluta() :
+    dic "salve, munde".
+
+functio echo(^x: Sermo) dat Sermo :
+    redde ^x.
+```
+
+#### 4.11.2 Conditional and loop heads
+
+| Construct | Marain | Rust |
+| --------- | ------ | ---- |
+| if | `si <cond> :` | `if cond { ... }` |
+| else | `aliter :` | `else { ... }` |
+| else if | `aliter si <cond> :` | `else if cond { ... }` |
+| while | `dum <cond> :` | `while cond { ... }` |
+| for | `pro <sigiled-binding> in <iterable> :` | `for x in iter { ... }` |
+| infinite loop | `semper :` | `loop { ... }` |
+
+- `si`, `dum`, `pro` reserved in v0.1 (PRD §4.2); v0.2 wires their parser support.
+- `semper` ("always") — new keyword. Adverb, not a verb — sanctioned exception to §4.2's verb-mood pattern (no Latin verb cleanly maps to "loop forever"; `dum verum :` was the alternative considered and rejected as wordy).
+- `in` — new keyword. Latin `in` and English/Rust `in` converge.
+- `aliter` ("otherwise") — new keyword. Adverb, sanctioned exception to §4.2's verb-mood pattern (parallel justification to `semper`: Latin has no verb mapping cleanly to "alternative branch"). Used standalone as `aliter :` (`else`) or chained as `aliter si <cond> :` (`else if`); the parser recognizes the two-token sequence and lowers to Rust's `else if`.
+
+#### 4.11.3 Control transfer
+
+- `interrumpe.` — `break` (imperative 2nd-sg. of `interrumpere`). New keyword.
+- `continua.` — `continue` (imperative 2nd-sg. of `continuare`). New keyword.
+
+Both are statements; both terminate with `.` per §4.8. (§4.2's imperative-mood example row was amended at the same time — `interrumpe!` corrected to `interrumpe`, since `break` is a keyword in Rust and the `!` was vestigial.)
+
+#### 4.11.4 Empty block
+
+- `nihil.` — Python's `pass` in Latin. New keyword; one statement that does nothing. Used where a block must be non-empty syntactically but no behavior is wanted.
+
+```
+functio stub() :
+    nihil.
+
+dum verum :
+    nihil.
+```
+
+#### 4.11.5 Range syntax
+
+Range literals borrow Rust's `..` and `..=` punctuation verbatim:
+
+```
+pro ^i in 0..10 :
+    dic ^i.
+
+pro ^i in 0..=10 :
+    dic ^i.
+```
+
+Latinizing the range form (`ab 0 ad 10`, `0 ad 10`, `0 usque ad 10`) was considered and rejected for v0.2: the Rust shape stays compact across all six range variants (`a..b`, `a..=b`, `..b`, `..=b`, `a..`, `..`) while the Latin phrasing would balloon. The alternatives are documented in `docs/core-lexicon.md` for future revisits.
+
+#### 4.11.6 Out of v0.2 scope (deferred to v0.3+)
+
+- **Closures** (`|x| body`, `move |x|`) — capture rules (Fn / FnMut / FnOnce, by-ref vs by-move) deserve a separate decision round.
+- **Generics** (`<T>`, bounds, lifetimes, const generics) — large surface; defer alongside the type-system layer.
+- **Visibility** (`pub` → PROPOSED `publicus`) — no module boundaries in v0.2 to gate against.
 
 ## 5. Execution Model
 
@@ -307,7 +389,7 @@ Explicitly **not** required for v0.1: full declension enforcement, indentation b
 
 S1-1. ~~**Section 4.2 mapping**~~ — **RESOLVED.** Approved with three amendments: ablative narrowed to trait bounds + lifetimes; dative narrowed to parameters + reassignment targets, governed by the "first to define is followed" rule (§4.2); vocative row removed; `DETONATIO!` added as the sanctioned out-of-phase exception.
 
-S1-2. ~~**Hello-world canonical form**~~ — **RESOLVED.** Macro-`!` split per §4.7 (small no-punct subset, `!` preserved otherwise). Statement terminator per §4.8 (period followed by newline or space). Control-structure-head terminator deferred.
+S1-2. ~~**Hello-world canonical form**~~ — **RESOLVED.** Macro-`!` split per §4.7 (small no-punct subset, `!` preserved otherwise). Statement terminator per §4.8 (period followed by newline or space). Control-structure-head terminator resolved 2026-05-25: `:` (Python-style); see §4.8 and §4.11.
 
 S1-3. ~~**Diacritics in identifiers.**~~ **RESOLVED** (§4.9). Forbidden in source and in source examples in docs; descriptive Latin prose in docs may use macrons.
 

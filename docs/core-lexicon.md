@@ -27,12 +27,12 @@ the mutability marker. Sigils don't appear in emitted Rust — `^x` and `@x`
 both lower to bare `x` at use sites; mutability is encoded only at the
 declaration site (`sit @x` → `let mut x`).
 
-## Reserved Marain Keywords (v0.1)
+## Reserved Marain Keywords
 
-All entries present in the lexer today (`lexer/keywords.rs`, 29 entries). A
-bare identifier matching one of these tokenizes as a keyword, not an
-identifier. Sigiled identifiers (`^name`, `@name`) skip the keyword table
-entirely, so `^et` is a variable named `et`, not the `et` operator.
+All entries present in the lexer today (`lexer/keywords.rs`). A bare
+identifier matching one of these tokenizes as a keyword, not an identifier.
+Sigiled identifiers (`^name`, `@name`) skip the keyword table entirely, so
+`^et` is a variable named `et`, not the `et` operator.
 
 Note: Marain does not use a macro sigil (`!`), so the common single-argument
 macros are reserved as their own keywords (PRD §4.7).
@@ -65,9 +65,16 @@ macros are reserved as their own keywords (PRD §4.7).
 | ------ | ---- | ----- |
 | `functio` | `fn` | function declaration |
 | `redde` | `return` | |
+| `dat` | `->` | function return-type indicator (3rd-sg. indicative active of `dare`, "gives"); PRD §4.11 |
 | `si` | `if` | |
+| `aliter` | `else` | "otherwise"; adverb-exception to §4.2 verb-mood pattern; `aliter si <cond> :` for `else if` |
 | `dum` | `while` | |
 | `pro` | `for` | |
+| `semper` | `loop` | infinite loop ("always"); adverb-exception to §4.2 verb-mood pattern |
+| `interrumpe` | `break` | imperative 2nd-sg. of `interrumpere` |
+| `continua` | `continue` | imperative 2nd-sg. of `continuare` |
+| `in` | `in` (for-binding) | `pro ^x in ^xs :` |
+| `nihil` | (empty block) | Python `pass` in Latin; statement form `nihil.` |
 
 ### Logical operators
 
@@ -112,6 +119,31 @@ parser expansion doesn't break existing source.
 
 Operator parsing and precedence are not yet wired up in the v0.1 parser
 (operator expressions are deferred — `2 plus 3` doesn't parse today).
+
+## Structural Punctuation
+
+Single-character tokens that carry syntactic meaning. Not Latin words, and
+not subject to the §4.4 "operators are Latin function words" rule — these
+are delimiters, not operators.
+
+| Token | Role |
+| ----- | ---- |
+| `.` | Statement terminator (PRD §4.8) |
+| `:` | Control-structure-head and function-head block introducer (PRD §4.8, §4.11) |
+| `(` `)` | Function-call argument list, function-signature parameter list (PRD §4.11), grouping |
+| `[` `]` | Collection-literal delimiters (e.g. `agmen ["a", "b"]`) |
+| `{` `}` | Reserved; no v0.1 / v0.2 use |
+| `,` | Parameter and argument separator |
+| `::` | Module-path separator (Rust convention preserved) |
+| `..` | Exclusive range (`0..10`); PRD §4.11.5 |
+| `..=` | Inclusive range (`0..=10`); PRD §4.11.5 |
+
+**On range Latinization.** `..` and `..=` were kept as Rust-style punctuation
+rather than Latinized. The Latin alternatives considered for v0.2 — `ab 0 ad
+10` ("from 0 to 10"), `0 ad 10` ("0 to 10"), `0 usque ad 10` ("all the way
+to 10") — would balloon across the six Rust range variants (`a..b`, `a..=b`,
+`..b`, `..=b`, `a..`, `..`) without earning corresponding clarity. Logged
+here so a future revisit has the prior thinking on file.
 
 ## Rust Keywords at the Marain↔Rust Boundary
 
