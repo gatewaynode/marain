@@ -1,8 +1,36 @@
 # Marain — TODO
 
-## Architecture design rounds (in flight)
+## v0.2 implementation plan
 
-Driving `ARCHITECTURE.md` to completeness for Stage 1. Each round closes in conversation, then commits to its section in `ARCHITECTURE.md`.
+Spec gates closed 2026-05-25; decisions recorded in `tasks/questions_and_answers_1.md` (vocabulary) and `tasks/notes/v0.2_loops_final_decisions.md` (architecture: A round granularity, B type-system scope, C lowering pass, D comment syntax).
+
+**Locked decisions driving the plan:**
+
+- **A — Round granularity:** batched where dependencies naturally overlap (R10+R11 share state; R14+R15 are small enough to ship together).
+- **B — Type-system scope:** open pass-through with a small emitter translation table (`Sermo`→`String`, `Numerus`→`i64`). Lexer doesn't gain type keywords. Generics (`<T>`) rejected in type position with `ParseError::GenericsDeferred`.
+- **C — Lowering pass:** deferred. Parser produces `Ast` directly, same as v0.1. Stage 2 hook stays documented in `ARCHITECTURE.md` §7.8.
+- **D — Comment syntax:** `//` line comments only in v0.2; `/*` reserved with deferred-feature error. PRD §4.12 amended, `ARCHITECTURE.md` §11 η entry marked resolved, lexicon Structural Punctuation table updated.
+
+**Rounds (one feature per round unless batched per A):**
+
+- [x] **Round 9 — Line comments** (closed 2026-05-25). New `crates/marain-core/src/lexer/comments.rs`; `/` byte added to `lexer/mod.rs` dispatch with two-char lookahead. `LexError::BlockCommentsDeferred` variant with explicit `use // for a line comment (PRD §4.12)` diagnostic. Indent state machine unchanged (comment-only lines are blank). Fixtures `09_line_comments` (emit) and `errors/06_block_comments_deferred` landed. +20 tests; workspace total 272. Sentrux: signal +3 (7079→7082), 0 cycles, 0 coupling, DSM `above_diagonal` stays 0. ARCHITECTURE.md §12.
+- [ ] **Round 10 — Block parsing.** Parser consumes `Indent` / `Dedent`. New `parse_block(&mut Parser) -> Vec<Stmt>`. Empty-block rule: at least one statement or `nihil.` required; comment-only blocks are parse errors. Test against bare indented sequences first (no control-flow head yet — exercised via a temporary fixture or by R11's tests). Quality gates + sentrux scan.
+- [ ] **Round 11 + Round 12 — Operator expressions + control flow** (batched per A). Precedence climbing for `plus` / `minus` / `per` / `modulo` / `aequat` / `non aequat` / `maior quam` / `minor quam` / `maior vel par` / `minor vel par` / `divisus per` / `et` / `vel` / `non`. Multi-word phrase recognition at the parser level (ARCHITECTURE §6.3). Then control-flow constructs: `si <cond> :` / `aliter :` / `aliter si <cond> :` / `dum <cond> :` / `semper :` / `interrumpe.` / `continua.`. AST gains `Expr::BinOp`, `Expr::UnaryOp`, `Stmt::If`, `Stmt::While`, `Stmt::Loop`, `Stmt::Break`, `Stmt::Continue`. Emit maps to Rust 1:1. Quality gates + sentrux scan.
+- [ ] **Round 13 — Functions.** `functio <name>(<params>) dat <Type> :` declaration + body. `<Type>` accepts any PascalCase `PlainIdent`; emitter has translation table for `Sermo` / `Numerus`, passes others through (B-3). Generics rejected in type position with `ParseError::GenericsDeferred` carrying a "deferred to v0.3+" message. `redde <expr>.` emits as Rust `return <expr>;`. `emit_stmt` gains an `indent_level` parameter (ARCHITECTURE §8.10 forward hook resolved). Parameter syntax: comma-separated `<sigiled-name>: <Type>` per PRD §4.11.1. Quality gates + sentrux scan.
+- [ ] **Round 14 + Round 15 — `pro` + ranges + `nihil`** (batched per A). New lexer tokens `DotDot` and `DotDotEq`. `pro <sigiled-binding> in <iterable> :` parsing; iterable is any expression so a range literal `0..10` flows through naturally. `nihil.` parses as `Stmt::Nihil` and emits as Rust `()` statement (or empty block, TBD at impl). Quality gates + sentrux scan.
+
+**Per-round closing protocol:** `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all` clean; sentrux MCP scan for complexity baseline; ARCHITECTURE.md round section drafted in conversation, then committed; `tasks/TODO.md` round entry checked off with a short result summary appended to "Completed"; `tasks/CONTINUITY.md` rewritten only on compact.
+
+**Open architectural sub-decisions during rounds (not gating now):**
+- R10: empty-block rule — `nihil.` required or empty-`Indent`/`Dedent` allowed? (Recommend `nihil.` required for clarity.)
+- R11+R12: `else if` chain shape — parse as single `IfElse { else: Else::If(...) }` or two nested nodes the emitter assembles? (Recommend single nested shape; cleaner emit.)
+- R13: function arity at signature time — typed parens are mandatory even for zero-arg (`functio foo() :`) or allow paren-less (`functio foo :`)? (Recommend mandatory parens per PRD §4.11.1.)
+- R13: unit return — omit `dat` clause entirely (already PRD-committed) — confirm emit produces no `-> ()` annotation (let Rust infer).
+- R14+R15: emit shape for `nihil.` — `();` statement vs empty `{}` block. (Recommend `();`.)
+
+## Architecture design rounds (Stage 1 / v0.1 — closed)
+
+Driving `ARCHITECTURE.md` to completeness for Stage 1. Each round closed in conversation, then committed to its section in `ARCHITECTURE.md`.
 
 - [x] **Round 1 — Skeleton** — workspace + crate layout + XDG on-disk paths (closed 2026-05-22)
 - [x] **Round 2 — Span & source-map** — multi-file-ready `Span { start, end, file: FileId }`, eager line index, `SourceMap` registry (closed 2026-05-22)
@@ -80,3 +108,14 @@ Driving `ARCHITECTURE.md` to completeness for Stage 1. Each round closes in conv
   - 198 unit tests + 1 integration test passing (56 new unit tests + e2e); fmt + clippy -D warnings clean.
   - Both R6 files comfortably under 500-LOC target; pressure-release not invoked.
   - Carry-over concern γ (Variabile runtime injection) re-pinned for when Variabile literals enter the language.
+- ~~**Round 9 implementation**~~ (done 2026-05-25)
+  - **PRD §4.12 amended** (pre-R9): `//` line comments committed for v0.2; `/* */` reserved syntax with explicit deferred-feature error; doc comments unscoped.
+  - **`.sentrux/rules.toml` created** (pre-R9): 20 architectural rules encoded (2 constraints + 18 boundaries) capturing the pipeline DAG from ARCHITECTURE.md §§2,6,7,8. Free tier mechanically checks 4/20; the rest are documented intent. Baseline session_start at signal 7079.
+  - New `crates/marain-core/src/lexer/comments.rs` (80 LOC, 7 unit tests): `scan_line_comment` consumes to next `\n` exclusive, leaves `\n` for the existing newline handler.
+  - `lexer/cursor.rs` gains `peek_at(offset)` for two-character opener lookahead (3 new unit tests).
+  - `lexer/mod.rs` dispatch: start-of-line `//` peek treats the line as blank for indent purposes; mid-line `/` arm triages `//` → comment, `/*` → `LexError::BlockCommentsDeferred`, bare `/` → `LexError::UnexpectedChar`. 9 new driver tests.
+  - `lexer/error.rs`: new `BlockCommentsDeferred { span }` variant; message `block comments are reserved syntax; use // for a line comment (PRD §4.12)`; 1 new test asserts message structure.
+  - 2 new fixtures: `09_line_comments.lat`+`.expected.rs` (trailing + standalone + blank-line-interleaved); `errors/06_block_comments_deferred.lat`+`.expected.txt` (diagnostic).
+  - **Total tests: 272** (+20 from 252 at R8 close). `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` all clean.
+  - Sentrux session_end: signal_delta +3 (7079 → 7082), cycles_change 0, coupling_change 0.0, DSM `above_diagonal` stays 0, `check_rules` passes. New `lexer/comments.rs` slotted in without inverting any pipeline edge.
+  - ARCHITECTURE.md §12 closed; §0 reading-order table extended; §11 η entry now points at §12. Carry-over concern η (comment syntax) RETIRED.

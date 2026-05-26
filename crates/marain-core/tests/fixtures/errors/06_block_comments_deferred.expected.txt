@@ -1,0 +1,1 @@
+06_block_comments_deferred.lat:1:1: error: block comments are reserved syntax; use // for a line comment (PRD §4.12)

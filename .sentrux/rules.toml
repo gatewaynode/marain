@@ -1,0 +1,124 @@
+# Marain — architectural rules
+#
+# Source of truth: ARCHITECTURE.md §§2, 6, 7, 8 (layering established R1–R6).
+# These rules encode the pipeline ordering already proven by the DSM
+# (sentrux baseline 2026-05-25 reported 0 above-diagonal edges); their job is
+# to keep future rounds from inverting it.
+#
+# Run via: sentrux MCP `check_rules` tool (or `sentrux check .` CLI).
+
+[constraints]
+max_cycles = 0           # locked; acyclicity score has been 10000 since R1
+no_god_files = true      # pairs with CLAUDE.md 500-LOC target / 1000-LOC hard cap
+
+# ---------------------------------------------------------------------------
+# marain-core compile pipeline
+#
+# Pipeline order, per ARCHITECTURE §1:
+#   fundamentals (span, source, error, token)
+#     -> ast
+#     -> lexer       (consumes token, source, error)
+#     -> parser      (consumes ast, token, error)
+#     -> emit        (consumes ast, error)
+#     -> shim        (consumes error only; filesystem)
+#
+# Each boundary below would invert one edge of that DAG.
+# ---------------------------------------------------------------------------
+
+[[boundaries]]
+from = "crates/marain-core/src/lexer/*"
+to = "crates/marain-core/src/parser/*"
+reason = "Lexer is upstream of parser (ARCHITECTURE §§6,7). Parser consumes tokens; never the reverse."
+
+[[boundaries]]
+from = "crates/marain-core/src/lexer/*"
+to = "crates/marain-core/src/ast.rs"
+reason = "Lexer emits tokens, not AST nodes (ARCHITECTURE §6.3)."
+
+[[boundaries]]
+from = "crates/marain-core/src/lexer/*"
+to = "crates/marain-core/src/emit.rs"
+reason = "Lexer must not know about Rust output shape (ARCHITECTURE §§6, 8)."
+
+[[boundaries]]
+from = "crates/marain-core/src/lexer/*"
+to = "crates/marain-core/src/shim.rs"
+reason = "Lexer is path-free; shim is filesystem-bound (ARCHITECTURE §8.2)."
+
+[[boundaries]]
+from = "crates/marain-core/src/parser/*"
+to = "crates/marain-core/src/emit.rs"
+reason = "Parser produces AST; emit consumes it. Coupling collapses the seam Stage 2 lowering needs (ARCHITECTURE §7.8)."
+
+[[boundaries]]
+from = "crates/marain-core/src/parser/*"
+to = "crates/marain-core/src/shim.rs"
+reason = "Parser is pure-AST; shim is filesystem-bound (ARCHITECTURE §8.1)."
+
+[[boundaries]]
+from = "crates/marain-core/src/emit.rs"
+to = "crates/marain-core/src/parser/*"
+reason = "Emit consumes AST, not parser internals (ARCHITECTURE §8.2)."
+
+[[boundaries]]
+from = "crates/marain-core/src/emit.rs"
+to = "crates/marain-core/src/lexer/*"
+reason = "Emit is downstream of lex; tokens are gone by this point (ARCHITECTURE §8.2)."
+
+[[boundaries]]
+from = "crates/marain-core/src/shim.rs"
+to = "crates/marain-core/src/lexer/*"
+reason = "Shim is path-agnostic per ARCHITECTURE §8.1 — writes whatever string it's given."
+
+[[boundaries]]
+from = "crates/marain-core/src/shim.rs"
+to = "crates/marain-core/src/parser/*"
+reason = "Shim is path-agnostic per ARCHITECTURE §8.1."
+
+[[boundaries]]
+from = "crates/marain-core/src/shim.rs"
+to = "crates/marain-core/src/emit.rs"
+reason = "Shim writes Rust strings; emit produces them. Composition lives in marain-cli driver (ARCHITECTURE §9.3), not core."
+
+[[boundaries]]
+from = "crates/marain-core/src/shim.rs"
+to = "crates/marain-core/src/ast.rs"
+reason = "Shim is below AST in the pipeline; only error.rs is shared."
+
+[[boundaries]]
+from = "crates/marain-core/src/ast.rs"
+to = "crates/marain-core/src/parser/*"
+reason = "AST is type definitions; parser depends on AST, never the reverse."
+
+[[boundaries]]
+from = "crates/marain-core/src/ast.rs"
+to = "crates/marain-core/src/emit.rs"
+reason = "AST is type definitions; emit depends on AST, never the reverse."
+
+# ---------------------------------------------------------------------------
+# marain-cli composition layering
+#
+# ARCHITECTURE §9.2 layout: args (parse) -> paths (resolve) -> driver
+# (orchestrate) -> error (report). main.rs is the thin shim that calls
+# driver::dispatch.
+# ---------------------------------------------------------------------------
+
+[[boundaries]]
+from = "crates/marain-cli/src/args.rs"
+to = "crates/marain-cli/src/driver.rs"
+reason = "Arg parsing is upstream of driving (ARCHITECTURE §9.2)."
+
+[[boundaries]]
+from = "crates/marain-cli/src/paths.rs"
+to = "crates/marain-cli/src/driver.rs"
+reason = "Path resolution is leaf; driver consumes it (ARCHITECTURE §9.5)."
+
+[[boundaries]]
+from = "crates/marain-cli/src/paths.rs"
+to = "crates/marain-cli/src/args.rs"
+reason = "Path resolution is independent of CLI shape."
+
+[[boundaries]]
+from = "crates/marain-cli/src/args.rs"
+to = "crates/marain-cli/src/paths.rs"
+reason = "Arg parsing knows nothing about XDG resolution."

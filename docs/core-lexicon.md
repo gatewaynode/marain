@@ -137,6 +137,8 @@ are delimiters, not operators.
 | `::` | Module-path separator (Rust convention preserved) |
 | `..` | Exclusive range (`0..10`); PRD §4.11.5 |
 | `..=` | Inclusive range (`0..=10`); PRD §4.11.5 |
+| `//` | Line comment to end of line (PRD §4.12); emits no token |
+| `/*` | Reserved; block comments deferred to v0.3+ (PRD §4.12); lexer surfaces deferred-feature error |
 
 **On range Latinization.** `..` and `..=` were kept as Rust-style punctuation
 rather than Latinized. The Latin alternatives considered for v0.2 — `ab 0 ad

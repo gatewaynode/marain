@@ -304,6 +304,28 @@ Latinizing the range form (`ab 0 ad 10`, `0 ad 10`, `0 usque ad 10`) was conside
 - **Generics** (`<T>`, bounds, lifetimes, const generics) — large surface; defer alongside the type-system layer.
 - **Visibility** (`pub` → PROPOSED `publicus`) — no module boundaries in v0.2 to gate against.
 
+### 4.12 Comments
+
+Marain supports **line comments** in v0.2; block comments are reserved syntax but deferred to v0.3+.
+
+**Line comments** use `//` (Rust convention). Everything from `//` through the end of the line is consumed by the lexer and emits no token.
+
+```
+sit ^x est 5.            // initial offset
+// the next line doubles it
+sit ^y est ^x plus ^x.
+```
+
+Lines whose non-whitespace content is entirely a comment do not affect indentation — the lexer treats them as blank, so a comment line inside an indented block neither opens a new block nor closes the current one.
+
+Comments are layout, not syntax: a comment cannot substitute for a statement. A control-structure body must still contain at least one real statement (or `nihil.`); an indented block whose only content is comment lines is a parse error.
+
+**Block comments (`/* */`) are reserved syntax.** The lexer rejects `/*` with an explicit deferred-feature diagnostic that points the user at `//`. Reserving the punctuation now prevents `/*` from being repurposed and yields a clearer error than the generic "unexpected character" path.
+
+**Doc comments (Rust's `///`) are not committed.** Marain has no documentation-generation story today (PRD §8 non-goals). If one lands post-v1, doc comments come with it.
+
+**Marker is `//`, not a Latin keyword,** to keep the comment lexer trivial, leave the short-Latin-word namespace free for future grammar work, and avoid §4.8's "period terminates statements" needing a sibling rule for word-form comments.
+
 ## 5. Execution Model
 
 - **Pipeline (Stage 1, v0.1).** `.lat` source → tokens → nominative-only AST → Rust source → `cargo run` on a generated shim crate → executable.

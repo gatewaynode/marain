@@ -24,6 +24,14 @@ impl<'src> Cursor<'src> {
         self.source.as_bytes().get(self.pos).copied()
     }
 
+    /// Peek `offset` bytes ahead of the current position. `peek_at(0)` is
+    /// equivalent to `peek`. Used by the lexer driver to disambiguate
+    /// two-character openers (e.g. `//` vs `/*` vs bare `/`) without a
+    /// save-pos / advance / restore dance.
+    pub fn peek_at(&self, offset: usize) -> Option<u8> {
+        self.source.as_bytes().get(self.pos + offset).copied()
+    }
+
     /// Consume one byte if present.
     pub fn advance(&mut self) -> Option<u8> {
         let b = self.peek()?;
@@ -100,5 +108,28 @@ mod tests {
         // is valid.
         let c = Cursor::new("\"sálve\"");
         assert_eq!(c.slice(0, 1), "\"");
+    }
+
+    #[test]
+    fn peek_at_zero_matches_peek() {
+        let c = Cursor::new("abc");
+        assert_eq!(c.peek_at(0), c.peek());
+    }
+
+    #[test]
+    fn peek_at_offset_looks_ahead_without_advancing() {
+        let c = Cursor::new("abc");
+        assert_eq!(c.peek_at(1), Some(b'b'));
+        assert_eq!(c.peek_at(2), Some(b'c'));
+        // pos unchanged
+        assert_eq!(c.pos(), 0);
+        assert_eq!(c.peek(), Some(b'a'));
+    }
+
+    #[test]
+    fn peek_at_past_end_is_none() {
+        let c = Cursor::new("ab");
+        assert_eq!(c.peek_at(2), None);
+        assert_eq!(c.peek_at(99), None);
     }
 }

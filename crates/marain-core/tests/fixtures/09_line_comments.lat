@@ -1,0 +1,8 @@
+// preamble: line comments smoke-test
+sit ^x est 42.
+// standalone between statements
+sit ^y est "hello".
+
+dic ^x.         // trailing after dic
+dic ^y.
+// trailing standalone at end of file

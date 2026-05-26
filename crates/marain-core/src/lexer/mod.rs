@@ -1,6 +1,7 @@
 //! Lexer driver: orchestrates per-token scanners and the indent state
 //! machine into a complete token stream ending in EOF.
 
+mod comments;
 mod cursor;
 mod error;
 mod idents;
@@ -64,6 +65,17 @@ pub fn lex(file: &SourceFile) -> Result<Vec<Token>, LexError> {
                 _ => {}
             }
 
+            // Comment-only lines do not affect indentation (PRD §4.12). After
+            // leading whitespace, peek for `//`; if found, consume the
+            // comment and skip indent consultation entirely — the line is
+            // layout-only, identical to a blank line for the indent stack.
+            if cursor.peek() == Some(b'/') && cursor.peek_at(1) == Some(b'/') {
+                cursor.advance(); // first /
+                cursor.advance(); // second /
+                comments::scan_line_comment(&mut cursor);
+                continue;
+            }
+
             // Consult the indent stack.
             match indent.line_start(measured_indent) {
                 LineStartOutcome::NoChange => {}
@@ -117,6 +129,32 @@ pub fn lex(file: &SourceFile) -> Result<Vec<Token>, LexError> {
             }
             Some(b) => b,
         };
+
+        // `/` opens either `//` (line comment, PRD §4.12) or `/*` (block
+        // comment, reserved-deferred). Bare `/` is unexpected — division is
+        // `divisus per` per PRD §4.4, so `/` has no standalone use today.
+        if b == b'/' {
+            cursor.advance(); // first /
+            match cursor.peek() {
+                Some(b'/') => {
+                    cursor.advance(); // second /
+                    comments::scan_line_comment(&mut cursor);
+                    continue;
+                }
+                Some(b'*') => {
+                    cursor.advance(); // consume *
+                    return Err(LexError::BlockCommentsDeferred {
+                        span: Span::new(start, cursor.pos(), file_id),
+                    });
+                }
+                _ => {
+                    return Err(LexError::UnexpectedChar {
+                        ch: '/',
+                        span: Span::new(start, cursor.pos(), file_id),
+                    });
+                }
+            }
+        }
 
         let token = match b {
             b'"' => strings::scan_string(&mut cursor, file_id)?,
@@ -462,5 +500,123 @@ mod tests {
             TokenKind::Eof,
         ];
         assert_eq!(toks, expected);
+    }
+
+    // --- R9: line comments (PRD §4.12) ---
+
+    #[test]
+    fn trailing_comment_after_statement() {
+        let toks = lex_str("sit ^x est 5. // note\n");
+        let expected = vec![
+            TokenKind::Keyword(Keyword::Sit),
+            TokenKind::SigiledIdent {
+                sigil: Sigil::Immutable,
+                name: "x".to_string(),
+            },
+            TokenKind::Keyword(Keyword::Est),
+            TokenKind::IntegerLit(5),
+            TokenKind::Period,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn standalone_comment_at_top_of_file() {
+        let toks = lex_str("// preamble\nsit ^x est 5.\n");
+        let expected = vec![
+            TokenKind::Keyword(Keyword::Sit),
+            TokenKind::SigiledIdent {
+                sigil: Sigil::Immutable,
+                name: "x".to_string(),
+            },
+            TokenKind::Keyword(Keyword::Est),
+            TokenKind::IntegerLit(5),
+            TokenKind::Period,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn comment_only_file_emits_only_eof() {
+        let toks = lex_str("// just a comment\n");
+        assert_eq!(toks, vec![TokenKind::Eof]);
+    }
+
+    #[test]
+    fn comment_only_file_no_trailing_newline() {
+        let toks = lex_str("// no newline at end");
+        assert_eq!(toks, vec![TokenKind::Eof]);
+    }
+
+    #[test]
+    fn consecutive_comment_only_lines_no_indent_change() {
+        let toks = lex_str("// one\n// two\n// three\nsit ^x est 5.\n");
+        let expected = vec![
+            TokenKind::Keyword(Keyword::Sit),
+            TokenKind::SigiledIdent {
+                sigil: Sigil::Immutable,
+                name: "x".to_string(),
+            },
+            TokenKind::Keyword(Keyword::Est),
+            TokenKind::IntegerLit(5),
+            TokenKind::Period,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn comment_inside_indented_block_does_not_dedent() {
+        let toks = lex_str("a:\n    b.\n    // inside\n    c.\n");
+        let expected = vec![
+            TokenKind::PlainIdent("a".to_string()),
+            TokenKind::Colon,
+            TokenKind::Indent,
+            TokenKind::PlainIdent("b".to_string()),
+            TokenKind::Period,
+            TokenKind::PlainIdent("c".to_string()),
+            TokenKind::Period,
+            TokenKind::Dedent,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn block_comment_is_deferred_error() {
+        let err = lex_err("/* block */");
+        match err {
+            LexError::BlockCommentsDeferred { span } => {
+                // span covers exactly the two-byte `/*`
+                assert_eq!(span.start, 0);
+                assert_eq!(span.end, 2);
+            }
+            other => panic!("expected BlockCommentsDeferred, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn block_comment_message_mentions_alternative() {
+        let err = lex_err("/* block */");
+        let msg = err.message();
+        assert!(
+            msg.contains("//"),
+            "message should suggest `//`; got: {msg}"
+        );
+        assert!(
+            msg.contains("reserved"),
+            "message should call out reserved status; got: {msg}",
+        );
+    }
+
+    #[test]
+    fn bare_slash_is_unexpected_char() {
+        let err = lex_err("/foo");
+        match err {
+            LexError::UnexpectedChar { ch, .. } => assert_eq!(ch, '/'),
+            other => panic!("expected UnexpectedChar, got {other:?}"),
+        }
     }
 }

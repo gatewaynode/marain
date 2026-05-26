@@ -18,6 +18,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 6 | §8 Codegen & Cargo Shim | **Closed** |
 | 7 | §9 CLI & Driver | **Closed** |
 | 8 | §10 Testing Harness | **Closed** |
+| 9 | §12 Line Comments | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -747,7 +748,72 @@ Accreted across rounds. Items here are *constraints on v0.1 design choices*, not
 
 - **AST inflection slot (carry-over from Round 1 concern α).** ~~Pinned for Round 5.~~ **RESOLVED** in Round 5 via `Ident` and `SigiledIdent` wrapper types (§7.5). Both carry `inflection: Option<Inflection>` where `Inflection` is an empty marker struct in Stage 1. Constructors default the slot to `None` so Stage 1 parser sites never reference the field. Stage 2 grows `Inflection` once; every consumer follows. Note: the `Span` shape from §4 is content-agnostic and needs no Stage 2 hook of its own.
 - **(ζ) Cross-file Stage 2 diagnostics.** When Stage 2 acquires multi-file grammar contexts (e.g., a sidecar `.latin` referencing identifiers across modules), the `SourceMap`-as-arg pattern from §4 continues to work without rework. No v0.1 work required.
-- **(η) Comment syntax.** Round 4 ships no comment lexing because the PRD doesn't specify one. Any comment proposal touches `lexer/mod.rs` (driver dispatch) and may need a `lexer/comments.rs` sibling. Until that lands, every byte the lexer doesn't recognize is `LexError::UnexpectedChar`, which means existing test files can't carry comments. PRD update is the gating step.
+- **(η) Comment syntax.** ~~Round 4 ships no comment lexing because the PRD doesn't specify one.~~ **RESOLVED** 2026-05-25 via PRD §4.12 (spec) and R9 / §12 (implementation). Carry-over RETIRED.
 - **(θ) Stage 2 `(lemma, inflection)` tokens.** The Round 4 `TokenKind` carries name strings directly. Stage 2 will need an optional inflection slot on `PlainIdent` and `SigiledIdent` variants. Adding the slot is a backward-compatible field addition; downstream consumers that ignore inflection continue to work. Pinned for Stage 2 work, not v0.1.
 - **`marain-lsp` crate seam.** The workspace is ready for a third member crate without restructuring; `marain-core` is the dependency target.
 - **`Variabile` runtime injection (carry-over from Round 1 concern γ).** Vendored support module emitted verbatim into the generated shim (option (c) of three). Lives in `marain-core::emit` once it materializes. Pinned for Round 6.
+
+## 12. Line Comments
+
+Round 9. PRD §4.12 (amended pre-R9) committed `//` line comments for v0.2 with `/* */` reserved-deferred; this round wires the lexer.
+
+### 12.1 Scope (v0.2)
+
+**In:** `//` line comments, consumed to but not including the next `\n` or EOF, emit no token. New `LexError::BlockCommentsDeferred` variant for `/*` with an explicit "use `//`" hint. Bare `/` remains `LexError::UnexpectedChar`.
+
+**Out (deferred):** block comments (`/* */`), doc comments (`///`), comment AST representation (comments are lexer-layer only — parser never sees them).
+
+### 12.2 Decomposition
+
+```
+crates/marain-core/src/lexer/
+  comments.rs  (new)         scan_line_comment + 7 unit tests
+  cursor.rs    (modified)    peek_at(offset) + 3 unit tests
+  error.rs     (modified)    BlockCommentsDeferred variant + 1 unit test
+  mod.rs       (modified)    start-of-line `//` peek + mid-line `/` dispatch + 9 driver tests
+```
+
+All files under target. The largest is `mod.rs` (~215 LOC executable + ~420 LOC tests); the test bloc is the natural decomposition candidate if pressure surfaces (`#[path = "mod_tests.rs"] mod tests;` per CLAUDE.md).
+
+### 12.3 Decisions
+
+- **Comment-only lines do not affect indentation.** At line start, after leading whitespace is consumed, the dispatcher peeks two bytes ahead for `//`. If found, the comment is consumed and the iteration continues *without invoking the indent state* — identical to the blank-line path. A `//` line inside an indented block neither opens a new block nor closes the current one (PRD §4.12).
+- **Mid-line `//` is the simple case.** Dispatcher hits `/` mid-line, peeks `/`, scans-to-EOL, `continue`s. Indent state was decided at line-start before any tokens emitted; the comment is transparent to it.
+- **`/*` is rejected with a *targeted* diagnostic**, not the generic `UnexpectedChar`. Dedicated variant `BlockCommentsDeferred { span }`; span covers exactly the two-byte `/*`; message: `block comments are reserved syntax; use // for a line comment (PRD §4.12)`. The dedicated variant also reserves `/*` against being claimed by any future proposal.
+- **Bare `/` stays `UnexpectedChar`.** Division is `divisus per` per PRD §4.4; `/` has no standalone use today. Forward-compatible: the v0.3 block-comment work only adds an arm; the `BlockCommentsDeferred` variant retires.
+- **`\n` is left for the existing newline handler.** The comment scanner stops at `\n` (exclusive). The lexer's normal end-of-line processing then advances past `\n` and sets `at_line_start = true`. Comment-induced off-by-one bugs in error reporting are categorically avoided.
+- **`Cursor::peek_at(offset)` joins the cursor API.** Two-character openers (existing `::`, future `..` per R14, now `//` and `/*`) all need to peek ahead. The save-pos / advance / restore dance is fragile; `peek_at` is three lines and pays for itself across multiple call sites.
+
+### 12.4 `LexError::BlockCommentsDeferred`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `span` | `Span` | Covers the two-byte `/*` |
+
+Rendered: `path:line:col: error: block comments are reserved syntax; use // for a line comment (PRD §4.12)`
+
+Joins `MarainError::Lex` via the existing facade — no new plumbing.
+
+### 12.5 Test coverage
+
+- **`comments.rs`** — 7 unit tests on `scan_line_comment`: empty body; consume to but not including newline; consume to EOF without trailing newline; leaves `\n` for caller; body doesn't lookback into Marain syntax; UTF-8 in body; consecutive `//` stays inside the comment.
+- **`cursor.rs`** — 3 new unit tests on `peek_at`: offset 0 matches `peek`; offset N looks ahead without advancing; past-end is `None`.
+- **`error.rs`** — 1 new unit test: `BlockCommentsDeferred` message contains "reserved", `//`, and `PRD §4.12`.
+- **`lexer/mod.rs` driver** — 9 new tests: trailing comment after statement; standalone comment at top of file; comment-only file (with and without trailing newline); consecutive comment-only lines preserve indent stack; comment-only line inside indented block doesn't dedent; `/*` produces `BlockCommentsDeferred` with two-byte span; `/*` message mentions `//` and "reserved"; bare `/` → `UnexpectedChar { ch: '/' }`.
+- **Goldens** — `09_line_comments.lat` (8 lines exercising trailing + standalone + blank-line-interleaved); `errors/06_block_comments_deferred.lat` (1 line, exercises the diagnostic).
+
+**Test count delta: +20.** Workspace total at R9 close: **272** (was 252 at R8 close). `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` all clean.
+
+### 12.6 Sentrux signal at R9 close
+
+`session_start` taken before any code change (signal 7079); `session_end` after the round: signal_delta +3 (7079 → 7082), cycles_change 0, coupling_change 0.0, DSM `above_diagonal` stays 0 (clean layering preserved), `check_rules` passes (4/20 rules enforced under free tier; 16 documented as architectural intent in `.sentrux/rules.toml`). The new `lexer/comments.rs` slotted in without inverting any pipeline edge.
+
+### 12.7 Pressure-release tier 1 not invoked
+
+All R9 files comfortably under target. The plausible future pressure site is `lexer/mod.rs`'s test bloc; not yet at threshold.
+
+### 12.8 Forward hooks
+
+- **Block-comment activation (v0.3+).** When block comments land, the `Some(b'*')` arm in the `/` dispatcher swaps from "return error" to "invoke `comments::scan_block_comment`"; `BlockCommentsDeferred` retires. Nesting and termination semantics are a v0.3 decision; PRD amendment is the gating step.
+- **Doc comments (`///`).** Not committed (PRD §4.12). If a doc story lands post-v1, comment dispatch grows three-byte lookahead. Mechanical extension.
+- **Range tokens (R14).** `peek_at` added in this round will be reused by the eventual `..` / `..=` lexing dispatch (R14 needs to distinguish `..` from `..=`).

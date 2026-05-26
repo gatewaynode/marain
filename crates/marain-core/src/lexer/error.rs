@@ -21,6 +21,10 @@ pub enum LexError {
     SigilWithoutIdent { sigil: char, span: Span },
     /// A numeric literal failed to parse (overflow or malformed).
     InvalidInteger { text: String, span: Span },
+    /// A `/*` block-comment opener was encountered. Block comments are
+    /// reserved syntax in v0.2 (PRD §4.12) and deferred to v0.3+; the
+    /// dedicated variant lets the diagnostic point the user at `//`.
+    BlockCommentsDeferred { span: Span },
 }
 
 impl LexError {
@@ -32,7 +36,8 @@ impl LexError {
             | Self::InvalidEscape { span, .. }
             | Self::InconsistentIndent { span }
             | Self::SigilWithoutIdent { span, .. }
-            | Self::InvalidInteger { span, .. } => *span,
+            | Self::InvalidInteger { span, .. }
+            | Self::BlockCommentsDeferred { span } => *span,
         }
     }
 
@@ -51,6 +56,10 @@ impl LexError {
                 format!("sigil '{sigil}' must be followed by an identifier with no whitespace")
             }
             Self::InvalidInteger { text, .. } => format!("integer literal `{text}` is not valid"),
+            Self::BlockCommentsDeferred { .. } => {
+                "block comments are reserved syntax; use // for a line comment (PRD §4.12)"
+                    .to_string()
+            }
         }
     }
 
@@ -113,5 +122,23 @@ mod tests {
     fn display_renders_message() {
         let e = LexError::UnterminatedString { span: s() };
         assert_eq!(e.to_string(), "unterminated string literal");
+    }
+
+    #[test]
+    fn block_comments_deferred_message_mentions_alternative() {
+        let e = LexError::BlockCommentsDeferred { span: s() };
+        let msg = e.message();
+        assert!(
+            msg.contains("reserved"),
+            "message should call out reserved status; got: {msg}",
+        );
+        assert!(
+            msg.contains("//"),
+            "message should point at // alternative; got: {msg}",
+        );
+        assert!(
+            msg.contains("PRD §4.12"),
+            "message should cite PRD §4.12; got: {msg}",
+        );
     }
 }
