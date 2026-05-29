@@ -6,7 +6,8 @@
 //! because R5 carries no operators.
 
 use crate::ast::{
-    Expr, Ident, IntegerLit, LetStmt, MacroCallStmt, Module, SigiledIdent, Stmt, StringLit,
+    Block, Expr, Ident, IfStmt, IntegerLit, LetStmt, MacroCallStmt, Module, SigiledIdent, Stmt,
+    StringLit,
 };
 use crate::lexer::keywords::Keyword;
 use crate::span::Span;
@@ -31,6 +32,7 @@ pub(super) fn parse_module(p: &mut Parser) -> Result<Module, ParseError> {
 fn parse_stmt(p: &mut Parser) -> Result<Stmt, ParseError> {
     match p.peek_kind() {
         TokenKind::Keyword(Keyword::Sit) => parse_let(p).map(Stmt::Let),
+        TokenKind::Keyword(Keyword::Si) => parse_if(p).map(Stmt::If),
         TokenKind::Keyword(k) if is_no_punct_macro(*k) => parse_macro_call(p).map(Stmt::MacroCall),
         other => Err(ParseError::UnknownStatementStart {
             found: other.clone(),
@@ -74,6 +76,31 @@ fn parse_macro_call(p: &mut Parser) -> Result<MacroCallStmt, ParseError> {
         callee,
         arg,
         span: callee_span.join(period_span),
+    })
+}
+
+fn parse_if(p: &mut Parser) -> Result<IfStmt, ParseError> {
+    let si_span = expect_keyword(p, Keyword::Si, "keyword `si`")?;
+    let cond = parse_expr(p)?;
+    expect_kind(p, &TokenKind::Colon, "`:`")?;
+    let then_block = parse_block(p)?;
+    Ok(IfStmt {
+        span: si_span.join(then_block.span),
+        cond,
+        then_block,
+    })
+}
+
+fn parse_block(p: &mut Parser) -> Result<Block, ParseError> {
+    let indent_span = expect_kind(p, &TokenKind::Indent, "indented block")?;
+    let mut stmts = Vec::new();
+    while !matches!(p.peek_kind(), TokenKind::Dedent | TokenKind::Eof) {
+        stmts.push(parse_stmt(p)?);
+    }
+    let dedent_span = expect_kind(p, &TokenKind::Dedent, "end of indented block")?;
+    Ok(Block {
+        stmts,
+        span: indent_span.join(dedent_span),
     })
 }
 

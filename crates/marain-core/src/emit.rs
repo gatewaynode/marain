@@ -14,7 +14,7 @@
 use std::fmt;
 use std::fmt::Write;
 
-use crate::ast::{Expr, LetStmt, MacroCallStmt, Module, Stmt};
+use crate::ast::{Block, Expr, IfStmt, LetStmt, MacroCallStmt, Module, Stmt};
 use crate::error::Diagnostic;
 use crate::span::Span;
 use crate::token::Sigil;
@@ -31,19 +31,43 @@ pub fn emit(module: &Module) -> Result<String, EmitError> {
     let mut out = String::new();
     out.push_str("fn main() {\n");
     for stmt in &module.items {
-        emit_stmt(&mut out, stmt)?;
+        emit_stmt(&mut out, stmt, 1)?;
     }
     out.push_str("}\n");
     Ok(out)
 }
 
-fn emit_stmt(out: &mut String, stmt: &Stmt) -> Result<(), EmitError> {
-    out.push_str("    ");
+fn emit_stmt(out: &mut String, stmt: &Stmt, indent_level: usize) -> Result<(), EmitError> {
+    push_indent(out, indent_level);
     match stmt {
         Stmt::Let(l) => emit_let(out, l)?,
         Stmt::MacroCall(c) => emit_macro_call(out, c)?,
+        Stmt::If(i) => emit_if(out, i, indent_level)?,
     }
     out.push('\n');
+    Ok(())
+}
+
+fn push_indent(out: &mut String, level: usize) {
+    for _ in 0..level {
+        out.push_str("    ");
+    }
+}
+
+fn emit_if(out: &mut String, i: &IfStmt, indent_level: usize) -> Result<(), EmitError> {
+    out.push_str("if ");
+    emit_expr(out, &i.cond)?;
+    out.push_str(" {\n");
+    emit_block_body(out, &i.then_block, indent_level + 1)?;
+    push_indent(out, indent_level);
+    out.push('}');
+    Ok(())
+}
+
+fn emit_block_body(out: &mut String, block: &Block, indent_level: usize) -> Result<(), EmitError> {
+    for stmt in &block.stmts {
+        emit_stmt(out, stmt, indent_level)?;
+    }
     Ok(())
 }
 
@@ -603,5 +627,39 @@ mod tests {
             result,
             Err(EmitError::UnescapableRustKeyword { ref name, .. }) if name == "self"
         ));
+    }
+
+    #[test]
+    fn si_emits_if_block_with_indent() {
+        let out = parse_and_emit("si ^x :\n    dic ^x.\n");
+        let expected = "fn main() {\n    if x {\n        println!(\"{}\", x);\n    }\n}\n";
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn nested_si_threads_indent_level() {
+        let out = parse_and_emit("si ^x :\n    si ^y :\n        dic \"deep\".\n");
+        let expected = "fn main() {\n    if x {\n        if y {\n            println!(\"{}\", \"deep\");\n        }\n    }\n}\n";
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn si_body_with_let_and_macro() {
+        let out = parse_and_emit("si ^x :\n    sit ^y est 7.\n    dic ^y.\n");
+        assert!(out.contains("if x {\n        let y = 7i64;\n        println!(\"{}\", y);\n    }"));
+    }
+
+    #[test]
+    fn top_level_stmts_emit_at_indent_one() {
+        // Regression guard: indent threading didn't break the pre-R10 top-level shape.
+        let out = parse_and_emit("sit ^x est 5.\n");
+        assert!(out.contains("    let x = 5i64;\n"));
+    }
+
+    #[test]
+    fn si_followed_by_top_level_stmt_keeps_both() {
+        let out = parse_and_emit("si ^x :\n    dic ^x.\nsit ^y est 7.\n");
+        assert!(out.contains("    if x {\n        println!(\"{}\", x);\n    }\n"));
+        assert!(out.contains("    let y = 7i64;\n"));
     }
 }

@@ -1,0 +1,3 @@
+sit ^x est 5.
+si ^x :
+    dic ^x.

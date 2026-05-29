@@ -1,0 +1,1 @@
+07_no_block_after_if.lat:2:1: error: expected indented block, found keyword `sit`

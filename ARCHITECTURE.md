@@ -19,6 +19,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 7 | §9 CLI & Driver | **Closed** |
 | 8 | §10 Testing Harness | **Closed** |
 | 9 | §12 Line Comments | **Closed** |
+| 10 | §13 Block Parsing + `si` | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -817,3 +818,87 @@ All R9 files comfortably under target. The plausible future pressure site is `le
 - **Block-comment activation (v0.3+).** When block comments land, the `Some(b'*')` arm in the `/` dispatcher swaps from "return error" to "invoke `comments::scan_block_comment`"; `BlockCommentsDeferred` retires. Nesting and termination semantics are a v0.3 decision; PRD amendment is the gating step.
 - **Doc comments (`///`).** Not committed (PRD §4.12). If a doc story lands post-v1, comment dispatch grows three-byte lookahead. Mechanical extension.
 - **Range tokens (R14).** `peek_at` added in this round will be reused by the eventual `..` / `..=` lexing dispatch (R14 needs to distinguish `..` from `..=`).
+
+## 13. Block Parsing + `si`
+
+Round 10. The parser learns to consume `Indent`/`Dedent` layout tokens and produces its first block-bearing AST node. The `si <cond> :` head (PRD §4.11.2) lands as the parent construct that exercises `parse_block` end-to-end without inventing a test-only seam. `aliter` / `aliter si` chains, `dum`, `semper`, and the full Boolean / operator expression surface remain in R11+R12.
+
+### 13.1 Scope (v0.2)
+
+**In:** `Block { stmts, span }` AST node; `IfStmt { cond, then_block, span }`; `Stmt::If` variant; `parse_block` (consumes `Indent`, parses statements until `Dedent`, returns `Block`); `parse_if` (`si` → `parse_expr` → `:` → `parse_block`); `Stmt::If` emit with nested indent threading on `emit_stmt`. Reuses existing `UnexpectedToken { expected: &'static str }` for the new "expected `:`" / "expected indented block" / "expected end of indented block" failure modes — no new `ParseError` variants.
+
+**Out (deferred):** `aliter` / `aliter si` else chain (R11+R12); `dum` / `semper` / `interrumpe.` / `continua.` (R11+R12); Boolean literals (`verum`, `falsum`) and operator expressions (R11+R12); `nihil.` empty-block sentinel (R14+R15); `functio` declarations with parameter blocks (R13); range tokens `..` / `..=` (R14+R15).
+
+### 13.2 Decomposition
+
+```
+crates/marain-core/src/
+  ast.rs               (modified)  + Block, IfStmt, Stmt::If; +2 unit tests
+  parser/
+    grammar.rs         (modified)  + parse_if, parse_block; parse_stmt gains Si dispatch
+    mod.rs             (modified)  +10 driver tests covering si + block parsing
+  emit.rs              (modified)  emit_stmt gains indent_level: usize; + emit_if, emit_block_body, push_indent helper; +5 unit tests
+```
+
+No new files. All modified files comfortably under the 500-LOC target post-R10.
+
+### 13.3 Decisions
+
+- **`Block` is a newtype, not a bare `Vec<Stmt>`.** The `span` field carries the indented region (`Indent.start` .. `Dedent.end`) so consumers don't recompute it. The newtype also gives `IfStmt::then_block` a name that reads as a block, not a list of statements that happen to be a block.
+- **Empty blocks are a parse error — but the *mechanism* is `ExpectedIndent`, not a dedicated `EmptyBlock` variant.** R4's indent state machine treats blank lines as transparent; R9 extended that to comment-only lines. Both transparencies mean the lexer cannot produce an `Indent` immediately followed by a `Dedent` from any source — there is always at least one statement token between them. So the only way to get an "empty block" failure is to have no `Indent` at all (body on the same column as the parent, or `Eof` straight after the `:`). `parse_block`'s leading `expect_kind(p, &TokenKind::Indent, "indented block")` covers both cases with the same `UnexpectedToken` shape. Per CLAUDE.md "don't add for can't-happen," no `EmptyBlock` variant ships.
+- **No dedicated `ExpectedIndent` / `ExpectedColon` / `ExpectedDedent` variants.** R5's `UnexpectedToken { expected: &'static str }` is the generic vehicle for every "wrong token at a known position" failure, and the label string ("`:`", "indented block", "end of indented block") gives the user the same diagnostic clarity a dedicated variant would. Variant proliferation has its own future tax (more `match` arms, more renderer code paths); skip until a variant earns its keep with something `UnexpectedToken` cannot say.
+- **`parse_block` loop checks for both `Dedent` *and* `Eof`.** The lexer guarantees a closing `Dedent` before `Eof` (R4 `indent.rs::finalize`), so `Eof` mid-block is structurally impossible from any well-formed token stream. Including `Eof` in the loop's exit predicate is one extra discriminant check that prevents an infinite loop if the lexer ever violates its contract — defensive against a *future bug in our own code*, not against valid input. The trailing `expect_kind(p, &TokenKind::Dedent, ...)` then fires `UnexpectedToken { found: Eof }` if the loop exited on `Eof`, which surfaces the broken-lexer state instead of hanging.
+- **`emit_stmt` takes `indent_level: usize` (resolves ARCHITECTURE §8.10 forward hook).** Top-level statements are at `1` (inside `fn main`); each block body recurses at `level + 1`. `push_indent` writes four spaces per level — same as R6's hard-coded `out.push_str("    ")`, just parameterized. Regression coverage in `top_level_stmts_emit_at_indent_one` confirms pre-R10 shape preserved.
+- **`emit_if` produces a closing `}` at the parent's indent level, no trailing newline.** The caller (`emit_stmt`) writes the statement's trailing `\n`, so `emit_if` leaves off the newline to keep the per-statement-line invariant of `emit_stmt`. Shape: `if <cond> {\n<body at level+1>\n<level-indent>}` followed by `\n` from the caller. Matches the Rust formatter's output for if-statements as block-statements.
+- **`Stmt::If` parses ahead of an executable condition language.** R10's expression set is still R5's (string/int/var-ref). `si 1 :` parses and emits as `if 1 { ... }` — which rustc will reject. Goldens are string-compares only (no `cargo run` in their harness), so the emit fixtures are exercised end-to-end through the parser+emitter without paying the rustc cost. R11+R12 (Boolean literals + operator expressions) make the produced Rust actually typecheck. Documented here so a confused future reader doesn't try to `cargo run` an R10 fixture by hand.
+- **R10 ships alone (per locked decision A).** `aliter` was considered for inclusion as the natural pair to `si`, but its chain shape (`aliter :` vs `aliter si <cond> :`) and the matching `Else::If(...)` AST shape are R11+R12 work; folding them in here would pre-commit a decision the next round should own. The single `si :` head is sufficient substrate for R10 to demonstrate `parse_block` end-to-end.
+
+### 13.4 New AST shape
+
+```rust
+pub enum Stmt {
+    Let(LetStmt),
+    MacroCall(MacroCallStmt),
+    If(IfStmt),     // new in R10
+}
+
+pub struct IfStmt {
+    pub cond: Expr,
+    pub then_block: Block,
+    pub span: Span,
+}
+
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+    pub span: Span,     // covers the Indent..Dedent region
+}
+```
+
+`Stmt::span()` dispatch extended; carry-over α (inflection slot) untouched (`If` has no identifier-bearing position of its own; the condition's `VarRef` already carries the slot via `SigiledIdent`).
+
+### 13.5 Test coverage
+
+- **`ast.rs`** — 2 new unit tests: `Block` construction; `Stmt::If` span dispatch.
+- **`parser/grammar.rs`** — covered transitively by driver tests in `parser/mod.rs`; pattern carried from R5.
+- **`parser/mod.rs` driver** — 10 new tests: single-statement body; multi-statement body; nested `si`; integer-literal condition (R10 doesn't gate on type); body at column-0 (no `Indent` → next stmt is sibling, not child); missing colon; missing condition; body at same indent as parent (`UnexpectedToken` with `"indented block"` label); `Eof` straight after `:`; span covers `si` through closing `Dedent`.
+- **`emit.rs`** — 5 new unit tests: simple `si` emits `if x { println!(...) }` with correct indent; nested `si` threads indent level (8-space body inside 4-space outer); body with mixed `let` + macro call; top-level regression (indent threading didn't break pre-R10 shape); `si` followed by sibling top-level statement preserves both.
+- **Goldens (emit)** — `10_si_simple.lat` (let + if + dic); `11_si_nested.lat` (two `si` heads, deepest at 12-space indent).
+- **Goldens (error)** — `errors/07_no_block_after_if.lat` (body at column 0 → `expected indented block, found keyword \`sit\``).
+
+**Test count delta: +17.** Workspace total at R10 close: **289** (was 272 at R9 close). `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` all clean.
+
+### 13.6 Sentrux signal at R10 close
+
+`session_start` taken before any code change (signal 7082); `session_end` after the round: signal_delta +7 (7082 → 7089), `cycles_change` 0, `coupling_change` 0.0, DSM `above_diagonal` stays 0 (clean layering preserved), `check_rules` passes (4/4 enforced under free tier). The new `Block` / `IfStmt` AST nodes flow downward through the existing parser → emit pipeline; no edge inversion.
+
+### 13.7 Pressure-release tier 1 not invoked
+
+All R10 modifications land well under the 500-LOC target. The plausible future pressure sites are `parser/grammar.rs` (when R11+R12 add precedence-climbing for the operator expression family, the multi-word phrase table, and the `aliter` chain), and `parser/mod.rs`'s test bloc (already large; the `#[path = "mod_tests.rs"] mod tests;` decomposition pattern from CLAUDE.md is the obvious next step if pressure surfaces).
+
+### 13.8 Forward hooks
+
+- **`aliter` / `aliter si` chain (R11+R12).** `IfStmt` will grow an `else_branch: Option<ElseBranch>` field, where `ElseBranch` is an enum of `Block(Block)` (terminal `aliter :`) or `If(Box<IfStmt>)` (`aliter si <cond> :`). The boxed recursion gives the `else if` chain the single-nested-shape recommended in TODO.md's R11+R12 sub-decision slate. `emit_if` grows an `else` arm; no new AST file decomposition needed.
+- **`dum`, `semper`, `interrumpe.`, `continua.` (R11+R12).** Each becomes a sibling `Stmt` variant with the same block-body shape (`while <cond> { ... }`, `loop { ... }`, `break;`, `continue;`). `parse_block` is unchanged; `parse_stmt` gains three more dispatch arms.
+- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })`. The empty-block-via-`nihil.` story (PRD §4.11.4) is the user's escape hatch for "I need a block here but the body is intentional no-op." R10's `ExpectedIndent` mechanism is already compatible — `nihil.` is a real statement so it produces an `Indent`-then-`Nihil`-then-`Dedent` token stream that `parse_block` handles uniformly.
+- **`functio` body block (R13).** `parse_block` is reusable verbatim; `parse_function` will call it after the signature `(...) dat <Tipus> :`.
+- **R10 condition typing (R11+R12).** When `verum` / `falsum` and the operator expression family land, R10's `si 1 :` → `if 1 { }` regression goes away naturally (real conditions produce real `bool` expressions). No R10 architectural change required.

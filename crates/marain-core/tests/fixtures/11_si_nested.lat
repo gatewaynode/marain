@@ -1,0 +1,5 @@
+sit ^x est 1.
+sit ^y est 2.
+si ^x :
+    si ^y :
+        dic "both".

@@ -337,4 +337,144 @@ mod tests {
     fn parser_requires_eof_terminator() {
         let _ = Parser::new(&[]);
     }
+
+    #[test]
+    fn si_with_single_statement_body() {
+        let m = parse_ok("si ^x :\n    dic ^x.\n");
+        assert_eq!(m.items.len(), 1);
+        match &m.items[0] {
+            Stmt::If(i) => {
+                match &i.cond {
+                    Expr::VarRef(v) => {
+                        assert_eq!(v.sigil, Sigil::Immutable);
+                        assert_eq!(v.name, "x");
+                    }
+                    other => panic!("expected VarRef cond, got {other:?}"),
+                }
+                assert_eq!(i.then_block.stmts.len(), 1);
+                assert!(matches!(i.then_block.stmts[0], Stmt::MacroCall(_)));
+            }
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_with_multi_statement_body() {
+        let m = parse_ok("si ^x :\n    dic ^x.\n    sit ^y est 7.\n");
+        match &m.items[0] {
+            Stmt::If(i) => {
+                assert_eq!(i.then_block.stmts.len(), 2);
+                assert!(matches!(i.then_block.stmts[0], Stmt::MacroCall(_)));
+                assert!(matches!(i.then_block.stmts[1], Stmt::Let(_)));
+            }
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_with_nested_si_body() {
+        let m = parse_ok("si ^x :\n    si ^y :\n        dic \"deep\".\n");
+        match &m.items[0] {
+            Stmt::If(outer) => {
+                assert_eq!(outer.then_block.stmts.len(), 1);
+                match &outer.then_block.stmts[0] {
+                    Stmt::If(inner) => {
+                        assert_eq!(inner.then_block.stmts.len(), 1);
+                        assert!(matches!(inner.then_block.stmts[0], Stmt::MacroCall(_)));
+                    }
+                    other => panic!("expected nested If, got {other:?}"),
+                }
+            }
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_with_integer_literal_cond_parses() {
+        // R10 doesn't validate type — the condition expression set is whatever
+        // parse_expr accepts (string/int/var-ref). Producing valid Rust is R11's job.
+        let m = parse_ok("si 1 :\n    dic \"hi\".\n");
+        match &m.items[0] {
+            Stmt::If(i) => match &i.cond {
+                Expr::IntegerLit(n) => assert_eq!(n.value, 1),
+                other => panic!("expected IntegerLit cond, got {other:?}"),
+            },
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_then_following_statement_at_column_zero() {
+        // The body lands at column 0 — same indent as the parent — so the lexer
+        // emits no Indent. parse_block surfaces the missing indent.
+        let m = parse_ok("si ^x :\n    dic ^x.\nsit ^y est 7.\n");
+        assert_eq!(m.items.len(), 2);
+        assert!(matches!(m.items[0], Stmt::If(_)));
+        assert!(matches!(m.items[1], Stmt::Let(_)));
+    }
+
+    #[test]
+    fn si_without_colon_is_error() {
+        let e = parse_err("si ^x\n    dic ^x.\n");
+        match e {
+            ParseError::UnexpectedToken { expected, .. } => {
+                assert!(expected.contains("`:`"), "expected label was {expected:?}");
+            }
+            other => panic!("expected UnexpectedToken, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_without_condition_is_error() {
+        let e = parse_err("si :\n    dic \"hi\".\n");
+        assert!(
+            matches!(e, ParseError::ExpectedExpression { .. }),
+            "got {e:?}",
+        );
+    }
+
+    #[test]
+    fn si_without_indented_body_is_error() {
+        let e = parse_err("si ^x :\nsit ^y est 1.\n");
+        match e {
+            ParseError::UnexpectedToken { expected, .. } => {
+                assert!(
+                    expected.contains("indented block"),
+                    "expected label was {expected:?}",
+                );
+            }
+            other => panic!("expected UnexpectedToken, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn si_at_eof_with_no_body_is_error() {
+        let e = parse_err("si ^x :\n");
+        match e {
+            ParseError::UnexpectedToken {
+                expected, found, ..
+            } => {
+                assert!(
+                    expected.contains("indented block"),
+                    "expected label was {expected:?}",
+                );
+                assert!(matches!(found, TokenKind::Eof), "found was {found:?}");
+            }
+            other => panic!("expected UnexpectedToken, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn if_stmt_span_covers_si_through_dedent() {
+        let m = parse_ok("si ^x :\n    dic ^x.\n");
+        match &m.items[0] {
+            Stmt::If(i) => {
+                assert_eq!(i.span.start, 0);
+                // Span end is the Dedent's end byte; verify the structural extent
+                // rather than an exact byte (Dedent is synthetic).
+                assert!(i.span.end > i.then_block.stmts[0].span().end);
+            }
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
 }

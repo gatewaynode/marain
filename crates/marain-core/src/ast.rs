@@ -25,6 +25,7 @@ pub struct Module {
 pub enum Stmt {
     Let(LetStmt),
     MacroCall(MacroCallStmt),
+    If(IfStmt),
 }
 
 impl Stmt {
@@ -32,6 +33,7 @@ impl Stmt {
         match self {
             Self::Let(s) => s.span,
             Self::MacroCall(s) => s.span,
+            Self::If(s) => s.span,
         }
     }
 }
@@ -47,6 +49,23 @@ pub struct LetStmt {
 pub struct MacroCallStmt {
     pub callee: Ident,
     pub arg: Expr,
+    pub span: Span,
+}
+
+/// `si <cond> :` with an indented `then` body. `aliter` / `aliter si` chains
+/// land in R11; the optional else slot is reserved against that round.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IfStmt {
+    pub cond: Expr,
+    pub then_block: Block,
+    pub span: Span,
+}
+
+/// An indented sequence of statements. Span covers the `Indent`..`Dedent`
+/// region (inclusive of both layout tokens).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Block {
+    pub stmts: Vec<Stmt>,
     pub span: Span,
 }
 
@@ -191,5 +210,39 @@ mod tests {
     #[test]
     fn inflection_default_is_empty_marker() {
         let _i: Inflection = Default::default();
+    }
+
+    #[test]
+    fn block_holds_stmts_and_span() {
+        let b = Block {
+            stmts: vec![Stmt::MacroCall(MacroCallStmt {
+                callee: Ident::new("dic".to_string(), sp(0, 3)),
+                arg: Expr::StringLit(StringLit {
+                    value: "hi".to_string(),
+                    span: sp(4, 8),
+                }),
+                span: sp(0, 9),
+            })],
+            span: sp(0, 9),
+        };
+        assert_eq!(b.stmts.len(), 1);
+        assert_eq!(b.span, sp(0, 9));
+    }
+
+    #[test]
+    fn if_stmt_span_dispatches() {
+        let i = Stmt::If(IfStmt {
+            cond: Expr::VarRef(SigiledIdent::new(
+                Sigil::Immutable,
+                "x".to_string(),
+                sp(3, 5),
+            )),
+            then_block: Block {
+                stmts: vec![],
+                span: sp(7, 15),
+            },
+            span: sp(0, 15),
+        });
+        assert_eq!(i.span(), sp(0, 15));
     }
 }
