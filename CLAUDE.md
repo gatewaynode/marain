@@ -1,6 +1,6 @@
 ## Preamble
 
-Project: **Marain** — a toy language that re-skins Rust syntax with Latin keywords and borrows select niceties from Python (multiline lexing, flexible data-type wrappers). Named after the language of the Culture in Iain M. Banks' novels — a multidimensional language reaching for Turing-complete expressiveness. (Renamed from "Rubigo" on 2026-05-17.)
+Project: **Marain** — an artisan language that re-skins Rust syntax with Latin keywords and borrows select niceties from Python (multiline lexing, flexible data-type wrappers). Named after the language of the Culture in Iain M. Banks' novels — a multidimensional language reaching for Turing-complete expressiveness. (Renamed from "Rubigo" on 2026-05-17.)
 Project start date: 2026-05-16
 Primary tooling: Rust edition 2024, Cargo.
 Dual goals: (1) study Latin through language design; (2) keep the user's Rust thinking sharp.
@@ -66,7 +66,8 @@ Vision documents `PRD.md` and `ARCHITECTURE.md` are stubs as of init — flesh t
 4. **Explain Changes**: High-level summary at each step
 5. **Document Results**: Add review section to `tasks/TODO.md`
 6. **Capture Lessons**: Update `tasks/LESSONS.md` after corrections
-7. **Review With Sentrux**: Use the sentrux MCP to review and stay on top of compexity after every task completion
+7. **Archive Decisions**: When closing a round (or other major decision-bearing milestone), extract design-decision rationale to `tasks/decisions/<round-or-milestone>.md` and slim the corresponding `ARCHITECTURE.md` section to a summary bullet list pointing at the archive. Protocol and round index: `tasks/DECISIONS.md`.
+8. **Review With Sentrux**: Use the sentrux MCP to review and stay on top of compexity after every task completion
 
 ## Core Principles
 

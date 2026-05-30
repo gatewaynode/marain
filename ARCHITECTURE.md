@@ -747,14 +747,14 @@ All R8 files comfortably under the 500-LOC target. The plausible future pressure
 
 ## 11. Stage 2 Forward Hooks
 
-Accreted across rounds. Items here are *constraints on v0.1 design choices*, not v0.1 work.
+Live items accreted across rounds. Constraints on v0.x design choices, not v0.x work.
 
-- **AST inflection slot (carry-over from Round 1 concern α).** ~~Pinned for Round 5.~~ **RESOLVED** in Round 5 via `Ident` and `SigiledIdent` wrapper types (§7.5). Both carry `inflection: Option<Inflection>` where `Inflection` is an empty marker struct in Stage 1. Constructors default the slot to `None` so Stage 1 parser sites never reference the field. Stage 2 grows `Inflection` once; every consumer follows. Note: the `Span` shape from §4 is content-agnostic and needs no Stage 2 hook of its own.
-- **(ζ) Cross-file Stage 2 diagnostics.** When Stage 2 acquires multi-file grammar contexts (e.g., a sidecar `.latin` referencing identifiers across modules), the `SourceMap`-as-arg pattern from §4 continues to work without rework. No v0.1 work required.
-- **(η) Comment syntax.** ~~Round 4 ships no comment lexing because the PRD doesn't specify one.~~ **RESOLVED** 2026-05-25 via PRD §4.12 (spec) and R9 / §12 (implementation). Carry-over RETIRED.
-- **(θ) Stage 2 `(lemma, inflection)` tokens.** The Round 4 `TokenKind` carries name strings directly. Stage 2 will need an optional inflection slot on `PlainIdent` and `SigiledIdent` variants. Adding the slot is a backward-compatible field addition; downstream consumers that ignore inflection continue to work. Pinned for Stage 2 work, not v0.1.
+- **(ζ) Cross-file Stage 2 diagnostics.** The `SourceMap`-as-arg pattern from §4 continues to work when Stage 2 acquires multi-file grammar contexts (sidecar `.latin` references). No v0.x work required.
+- **(θ) Stage 2 `(lemma, inflection)` tokens.** Stage 2 grows an optional inflection slot on `PlainIdent` / `SigiledIdent` token variants. Backward-compatible field addition; downstream consumers that ignore inflection continue to work.
 - **`marain-lsp` crate seam.** The workspace is ready for a third member crate without restructuring; `marain-core` is the dependency target.
-- **`Variabile` runtime injection (carry-over from Round 1 concern γ).** Vendored support module emitted verbatim into the generated shim (option (c) of three). Lives in `marain-core::emit` once it materializes. Pinned for Round 6.
+- **`Variabile` runtime injection (γ).** Vendored support module emitted verbatim into the generated shim. Pinned for when `Variabile` literals enter the language (post-v0.2).
+
+Resolved carry-overs: α (R5 / §7.5), η (R9 / §12).
 
 ## 12. Line Comments
 
@@ -780,12 +780,14 @@ All files under target. The largest is `mod.rs` (~215 LOC executable + ~420 LOC 
 
 ### 12.3 Decisions
 
-- **Comment-only lines do not affect indentation.** At line start, after leading whitespace is consumed, the dispatcher peeks two bytes ahead for `//`. If found, the comment is consumed and the iteration continues *without invoking the indent state* — identical to the blank-line path. A `//` line inside an indented block neither opens a new block nor closes the current one (PRD §4.12).
-- **Mid-line `//` is the simple case.** Dispatcher hits `/` mid-line, peeks `/`, scans-to-EOL, `continue`s. Indent state was decided at line-start before any tokens emitted; the comment is transparent to it.
-- **`/*` is rejected with a *targeted* diagnostic**, not the generic `UnexpectedChar`. Dedicated variant `BlockCommentsDeferred { span }`; span covers exactly the two-byte `/*`; message: `block comments are reserved syntax; use // for a line comment (PRD §4.12)`. The dedicated variant also reserves `/*` against being claimed by any future proposal.
-- **Bare `/` stays `UnexpectedChar`.** Division is `divisus per` per PRD §4.4; `/` has no standalone use today. Forward-compatible: the v0.3 block-comment work only adds an arm; the `BlockCommentsDeferred` variant retires.
-- **`\n` is left for the existing newline handler.** The comment scanner stops at `\n` (exclusive). The lexer's normal end-of-line processing then advances past `\n` and sets `at_line_start = true`. Comment-induced off-by-one bugs in error reporting are categorically avoided.
-- **`Cursor::peek_at(offset)` joins the cursor API.** Two-character openers (existing `::`, future `..` per R14, now `//` and `/*`) all need to peek ahead. The save-pos / advance / restore dance is fragile; `peek_at` is three lines and pays for itself across multiple call sites.
+_Full rationale: [`tasks/decisions/R09_line_comments.md`](../tasks/decisions/R09_line_comments.md). Summary list below._
+
+- **Comment-only lines transparent to indent state.** Dispatcher peeks two bytes at line start; if `//`, consume and continue without invoking the indent machinery (identical to the blank-line path).
+- **Mid-line `//` is the simple case.** Dispatcher hits `/` mid-line, peeks `/`, scans-to-EOL, `continue`s. Indent state already decided at line start.
+- **`/*` → `LexError::BlockCommentsDeferred`** with targeted "use `//`" message (PRD §4.12). Dedicated variant also reserves the syntax against future repurposing.
+- **Bare `/` stays `UnexpectedChar`.** Division is `divisus per` per PRD §4.4; `/` has no standalone use. Forward-compatible: v0.3 block-comment work only adds an arm.
+- **`\n` left for the existing newline handler.** Comment scanner stops at `\n` exclusive; categorically avoids off-by-one bugs in error reporting.
+- **`Cursor::peek_at(offset)` joins the cursor API.** Two-byte opener disambiguation; also serves future `..` (R14).
 
 ### 12.4 `LexError::BlockCommentsDeferred`
 
@@ -846,14 +848,16 @@ No new files. All modified files comfortably under the 500-LOC target post-R10.
 
 ### 13.3 Decisions
 
-- **`Block` is a newtype, not a bare `Vec<Stmt>`.** The `span` field carries the indented region (`Indent.start` .. `Dedent.end`) so consumers don't recompute it. The newtype also gives `IfStmt::then_block` a name that reads as a block, not a list of statements that happen to be a block.
-- **Empty blocks are a parse error — but the *mechanism* is `ExpectedIndent`, not a dedicated `EmptyBlock` variant.** R4's indent state machine treats blank lines as transparent; R9 extended that to comment-only lines. Both transparencies mean the lexer cannot produce an `Indent` immediately followed by a `Dedent` from any source — there is always at least one statement token between them. So the only way to get an "empty block" failure is to have no `Indent` at all (body on the same column as the parent, or `Eof` straight after the `:`). `parse_block`'s leading `expect_kind(p, &TokenKind::Indent, "indented block")` covers both cases with the same `UnexpectedToken` shape. Per CLAUDE.md "don't add for can't-happen," no `EmptyBlock` variant ships.
-- **No dedicated `ExpectedIndent` / `ExpectedColon` / `ExpectedDedent` variants.** R5's `UnexpectedToken { expected: &'static str }` is the generic vehicle for every "wrong token at a known position" failure, and the label string ("`:`", "indented block", "end of indented block") gives the user the same diagnostic clarity a dedicated variant would. Variant proliferation has its own future tax (more `match` arms, more renderer code paths); skip until a variant earns its keep with something `UnexpectedToken` cannot say.
-- **`parse_block` loop checks for both `Dedent` *and* `Eof`.** The lexer guarantees a closing `Dedent` before `Eof` (R4 `indent.rs::finalize`), so `Eof` mid-block is structurally impossible from any well-formed token stream. Including `Eof` in the loop's exit predicate is one extra discriminant check that prevents an infinite loop if the lexer ever violates its contract — defensive against a *future bug in our own code*, not against valid input. The trailing `expect_kind(p, &TokenKind::Dedent, ...)` then fires `UnexpectedToken { found: Eof }` if the loop exited on `Eof`, which surfaces the broken-lexer state instead of hanging.
-- **`emit_stmt` takes `indent_level: usize` (resolves ARCHITECTURE §8.10 forward hook).** Top-level statements are at `1` (inside `fn main`); each block body recurses at `level + 1`. `push_indent` writes four spaces per level — same as R6's hard-coded `out.push_str("    ")`, just parameterized. Regression coverage in `top_level_stmts_emit_at_indent_one` confirms pre-R10 shape preserved.
-- **`emit_if` produces a closing `}` at the parent's indent level, no trailing newline.** The caller (`emit_stmt`) writes the statement's trailing `\n`, so `emit_if` leaves off the newline to keep the per-statement-line invariant of `emit_stmt`. Shape: `if <cond> {\n<body at level+1>\n<level-indent>}` followed by `\n` from the caller. Matches the Rust formatter's output for if-statements as block-statements.
-- **`Stmt::If` parses ahead of an executable condition language.** R10's expression set is still R5's (string/int/var-ref). `si 1 :` parses and emits as `if 1 { ... }` — which rustc will reject. Goldens are string-compares only (no `cargo run` in their harness), so the emit fixtures are exercised end-to-end through the parser+emitter without paying the rustc cost. R11+R12 (Boolean literals + operator expressions) make the produced Rust actually typecheck. Documented here so a confused future reader doesn't try to `cargo run` an R10 fixture by hand.
-- **R10 ships alone (per locked decision A).** `aliter` was considered for inclusion as the natural pair to `si`, but its chain shape (`aliter :` vs `aliter si <cond> :`) and the matching `Else::If(...)` AST shape are R11+R12 work; folding them in here would pre-commit a decision the next round should own. The single `si :` head is sufficient substrate for R10 to demonstrate `parse_block` end-to-end.
+_Full rationale: [`tasks/decisions/R10_block_si.md`](../tasks/decisions/R10_block_si.md). Summary list below._
+
+- **`Block` is a newtype with span**, not a bare `Vec<Stmt>`. `span` carries the `Indent.start..Dedent.end` region.
+- **Empty-block failure surfaces via `UnexpectedToken "indented block"`** — no dedicated `EmptyBlock` variant. R4+R9 indent transparencies prevent an empty `Indent`-`Dedent` pair structurally; the only failure mode is "no `Indent` at all," which the leading `expect_kind` already covers.
+- **No dedicated `ExpectedIndent` / `ExpectedColon` / `ExpectedDedent` variants.** `UnexpectedToken { expected: &'static str }` is the generic vehicle; label strings carry the diagnostic clarity. Variant proliferation has its own future tax.
+- **`parse_block` loop exit checks both `Dedent` and `Eof`.** Defensive against own-code bugs (lexer guarantees `Dedent` before `Eof`, but the loop terminates rather than infinite-loops if that contract breaks).
+- **`emit_stmt` takes `indent_level: usize`** — resolves §8.10 forward hook. Top-level at `1` (inside `fn main`); each block body recurses at `level + 1`.
+- **`emit_if` closes `}` at parent's indent level, no trailing newline.** Caller writes the trailing `\n`; preserves the per-statement-line invariant.
+- **`Stmt::If` ships ahead of an executable condition language.** R10's expression set is R5's; `si 1 :` parses and emits but rustc rejects. Goldens are string-compares only. R11+R12 retires the caveat.
+- **R10 ships alone** (locked decision A); `aliter` chain deferred to R11+R12 to avoid pre-committing the `else_branch` AST shape.
 
 ### 13.4 New AST shape
 
@@ -899,11 +903,9 @@ All R10 modifications land well under the 500-LOC target. The plausible future p
 
 ### 13.8 Forward hooks
 
-- **`aliter` / `aliter si` chain (R11+R12).** `IfStmt` will grow an `else_branch: Option<ElseBranch>` field, where `ElseBranch` is an enum of `Block(Block)` (terminal `aliter :`) or `If(Box<IfStmt>)` (`aliter si <cond> :`). The boxed recursion gives the `else if` chain the single-nested-shape recommended in TODO.md's R11+R12 sub-decision slate. `emit_if` grows an `else` arm; no new AST file decomposition needed.
-- **`dum`, `semper`, `interrumpe.`, `continua.` (R11+R12).** Each becomes a sibling `Stmt` variant with the same block-body shape (`while <cond> { ... }`, `loop { ... }`, `break;`, `continue;`). `parse_block` is unchanged; `parse_stmt` gains three more dispatch arms.
-- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })`. The empty-block-via-`nihil.` story (PRD §4.11.4) is the user's escape hatch for "I need a block here but the body is intentional no-op." R10's `ExpectedIndent` mechanism is already compatible — `nihil.` is a real statement so it produces an `Indent`-then-`Nihil`-then-`Dedent` token stream that `parse_block` handles uniformly.
-- **`functio` body block (R13).** `parse_block` is reusable verbatim; `parse_function` will call it after the signature `(...) dat <Tipus> :`.
-- **R10 condition typing (R11+R12).** When `verum` / `falsum` and the operator expression family land, R10's `si 1 :` → `if 1 { }` regression goes away naturally (real conditions produce real `bool` expressions). No R10 architectural change required.
+- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })` — PRD §4.11.4 escape hatch for "I need a block here but no behavior." `parse_block` already compatible: `nihil.` is a real statement that produces an `Indent`-then-`Nihil`-then-`Dedent` stream.
+
+Resolved in later rounds: `aliter` chain, `dum` / `semper` / `interrumpe.` / `continua.`, R10 condition typing (all R11+R12 / §14); `functio` body block (R13 / §15).
 
 ## 14. Operator Expressions + Control Flow
 
@@ -972,78 +974,21 @@ front-loaded in R4 against exactly this round.
 
 ### 14.3 Decisions
 
-- **Latin for op variants, English for stmt variants.** `BinOp::Plus` /
-  `BinOp::DivisusPer` / `BinOp::NonAequat` (Latin, with compound names for
-  multi-word phrases); `Stmt::While` / `Stmt::Loop` / `Stmt::Break` /
-  `Stmt::Continue` (English, matching the Rust lowering target). Rule: enum
-  variants whose name mirrors a *user-facing Marain keyword* track the Rust
-  target; variants that name an *operator surface* use the Latin spelling
-  because the parser sees Latin tokens, not Rust symbols. Existing
-  `Stmt::Let` / `Stmt::If` unchanged (no rename sweep).
-- **Precedence climbing, not Pratt.** Seven cascaded `parse_<level>`
-  functions, one per Rust precedence rung (low to high: or, and, equality,
-  comparison, additive, multiplicative, unary). All binary levels are
-  left-associative via `while`-loop iteration; unary is right-associative
-  via tail recursion. Roughly the textbook recursive-descent shape; Pratt
-  parsing would buy nothing at this op count.
-- **Multi-word phrases consumed greedily at parse level.** `consume_comparison_completer`
-  fires when the parser sees `minor` or `maior` at comparison level: peeks
-  for `quam` (→ `<` / `>`) or `vel par` (→ `<=` / `>=`). Bare `minor` /
-  `maior` is a hard `UnexpectedToken` error. `divisus per` and `non aequat`
-  use the same shape (advance, expect completer). The lexer remains
-  multi-word-phrase-unaware — one token per word per PRD §4.4.
-- **`non` disambiguates via one-token lookahead.** At equality level, `non`
-  followed by `aequat` is the binary `!=` operator; everything else is the
-  unary prefix (handled at parse_unary). The equality level pre-empts so
-  parse_unary only ever sees prefix `non`. `Parser::peek_kind_at(offset)`
-  added for this case; clamps past-end peeks to the trailing `Eof` token
-  (lexer guarantees Eof is last).
-- **Boolean literals are a new `Expr::BoolLit` variant, not a fold into
-  `IntegerLit`.** Parallels `StringLit` / `IntegerLit` shape (struct with
-  `value` + `span`); emit produces bare `true` / `false` (Rust keywords but
-  never identifier-position here, so `escape_ident_for_rust` doesn't apply).
-- **Paren-wrap-always in emit.** Every `BinOp` / `UnaryOp` emits with
-  surrounding parens (`(a + b)`, `(!x)`). The parser tree already encodes
-  correct precedence; paren-everywhere ensures emission is bulletproof
-  against precedence drift in the Rust target. Cost: visual noise in the
-  emitted Rust. Benefit: zero risk of operator-precedence subtleties leaking
-  through the lowering.
-- **Expression-grouping parens (`(expr)`) in primary.** Cost is one match
-  arm; benefit is users don't have to memorize Rust's precedence table to
-  write arithmetic that overrides defaults. The parser unwraps to the
-  inner expression — no `ParenExpr` AST node, because precedence is
-  structurally encoded in the tree shape after parsing.
-- **`aliter` recognition by indent-aligned next-token.** After `parse_block`
-  returns from the then-body, the parser peeks for `Aliter`. If the user
-  writes `aliter` at the wrong indent, the lexer's Dedent cascade has
-  already moved past the `si`'s context — `Aliter` either won't be the
-  next token, or it'll belong to an outer construct. Indent alignment is
-  enforced implicitly by the layout tokens, not by a parser check.
-- **`aliter si` recurses through `parse_if`.** A chain `aliter si … aliter
-  si … aliter :` becomes `IfStmt { else_branch: Some(If(Box<IfStmt {
-  else_branch: Some(If(Box<IfStmt { else_branch: Some(Block(...)) }>)) }>))
-  }`. Single nested AST shape (TODO.md sub-decision #1 confirmed); emit
-  walks the chain by recursing into `emit_if` from `emit_else_branch`.
-- **`semper :` emits `loop { … }` (no `Semper` rename of `Stmt::Loop`).**
-  AST name matches Rust target per the naming rule above; PRD §4.11.2
-  keyword `semper` ("always") drives parser dispatch.
-- **`interrumpe.` and `continua.` are statements terminated by `.`.** Both
-  carry just a `span`; no payload (unlabeled, no value-from-break in v0.2 —
-  TODO.md sub-decision #7).
-- **No new `ParseError` variants.** Every R11+R12 failure mode rides on
-  `UnexpectedToken { expected: &'static str }` with descriptive labels
-  ("`per` to complete `divisus per`", "`quam` or `vel par` to complete
-  `maior` comparison", etc.). Consistent with R10's stance — variant
-  proliferation has its own future tax.
-- **Test files split via `#[path = "…_tests.rs"] mod tests;`.** R11+R12
-  growth pushed `parser/mod.rs` to 905 LOC and `emit.rs` to 899 LOC, both
-  in pressure-release territory dominated by test code. Per CLAUDE.md
-  ("If `#[cfg(test)] mod tests` dominates, move it to a sibling file …
-  that's a clean decomposition, not a workaround"), tests moved to
-  `parser/mod_tests.rs` (836 LOC) and `emit_tests.rs` (554 LOC). Production
-  files now at 73 and 349 LOC respectively. The two sibling test files
-  remain in pressure-release (one cohesive helper set per file); module
-  doc-comment carries the required justification.
+_Full rationale: [`tasks/decisions/R11_12_operators_control_flow.md`](../tasks/decisions/R11_12_operators_control_flow.md). Summary list below._
+
+- **Latin for op variants, English for stmt variants.** `BinOp::Plus` / `NonAequat` (Latin; operator surface); `Stmt::While` / `Loop` / `Break` / `Continue` (English; mirrors Rust target via PRD keyword names).
+- **Precedence climbing, not Pratt.** Seven cascaded `parse_<level>` fns (or → and → equality → comparison → additive → multiplicative → unary). Left-associative via `while`; unary right-associative via tail recursion.
+- **Multi-word phrases consumed greedily at parse level.** `consume_comparison_completer` peeks for `quam` / `vel par` after `minor` / `maior`; same shape for `divisus per` and `non aequat`. Lexer stays single-word-per-token.
+- **`non` disambiguates via `peek_kind_at`.** At equality level, `non aequat` is `!=`; everything else is unary prefix at `parse_unary`.
+- **`Expr::BoolLit` is a new variant**, not folded into `IntegerLit`. Parallels `StringLit` / `IntegerLit` shape.
+- **Paren-wrap-always in emit.** Every `BinOp` / `UnaryOp` emits with surrounding parens. Cost: visual noise. Benefit: zero risk of precedence drift in the lowering.
+- **Expression-grouping parens (`(expr)`) in primary** unwrap to inner expression — no `ParenExpr` AST node; precedence is structurally encoded in tree shape.
+- **`aliter` recognition by next-token after `parse_block` returns.** Indent alignment enforced implicitly by layout tokens.
+- **`aliter si` recurses through `parse_if`.** Chain becomes nested `IfStmt.else_branch: Some(If(Box<IfStmt { ... }>))`. Single nested AST shape; emit walks via `emit_else_branch` → `emit_if` recursion.
+- **`semper :` emits `loop { … }`** — no `Semper` rename of `Stmt::Loop`; AST name matches Rust target per the naming rule.
+- **`interrumpe.` / `continua.` are statements terminated by `.`** — span-only, no payload (no labels, no value-from-break in v0.2).
+- **No new `ParseError` variants.** All R11+R12 failures ride on `UnexpectedToken { expected: &'static str }` with descriptive labels.
+- **Test files split via `#[path = "…_tests.rs"] mod tests;`.** First pressure-release invocation in v0.2. `parser/mod_tests.rs` (836 LOC) and `emit_tests.rs` (554 LOC); production files at 73 and 349 LOC respectively. Sibling-file decomposition per CLAUDE.md.
 
 ### 14.4 New AST shape
 
@@ -1178,21 +1123,16 @@ statements, expressions).
   hatch. `parse_block` is already compatible — `nihil.` is a real statement,
   so it produces an `Indent`-then-`Nihil`-then-`Dedent` stream the existing
   loop handles uniformly.
-- **`functio` declaration block (R13).** `parse_block` is reusable verbatim;
-  `parse_function` will call it after the signature `(<params>) dat
-  <Tipus> :` per PRD §4.11.1. Function bodies become a recursion source for
-  `redde <expr>.` (return) — a new `Stmt::Return(ReturnStmt)` variant.
 - **Labeled `break 'name` / `continue 'name`.** Out of v0.2 scope (TODO.md
   sub-decision #7). When added, `BreakStmt` / `ContinueStmt` grow an
   `Option<Ident>` field for the label name.
-- **`break <expr>` as loop-value-from-break.** Rust's loops are expressions
-  whose value comes from `break value`. Not in v0.2 scope. When added,
-  `BreakStmt` grows an `Option<Expr>` field.
-- **Op-name standardization (Stage 2).** Stage 2 may re-inflect operators
-  based on Latin grammatical context. The current `BinOp` enum's Latin
-  variant names (`DivisusPer`, `MinorQuam`, etc.) are spelled at the lemma
-  level — adding inflection metadata would parallel the existing carry-over
-  α pattern on identifier nodes.
+- **`break <expr>` as loop-value-from-break.** Not in v0.2 scope. When
+  added, `BreakStmt` grows an `Option<Expr>` field.
+- **Op-name standardization (Stage 2).** `BinOp` variant names are spelled
+  at the lemma level (`DivisusPer`, `MinorQuam`, etc.); adding inflection
+  metadata would parallel the carry-over α pattern on identifier nodes.
+
+Resolved in R13: `functio` declaration block (§15).
 
 ## 15. Function Declarations + Calls
 
@@ -1276,69 +1216,27 @@ under target. Pressure-release status applies to test siblings only
 
 ### 15.3 Decisions
 
-- **Two-pass module emit.** `emit()` walks `module.items` twice: pass 1
-  emits each `Stmt::Function` as a top-level Rust `fn`; pass 2 emits
-  everything else inside a `fn main() { ... }` wrapper. `fn main()` is
-  always emitted (cargo's binary-crate requirement). Top-level
-  non-function statements continue to land inside `fn main`, preserving
-  the v0.1 hello-world shape exactly. The partition is one explicit
-  `matches!` filter per pass — no flag, no Vec-of-functions intermediate.
-- **`Stmt::Call(CallStmt)` for side-effect statements.** A call at
-  statement position (`saluta().`) emits as `saluta();` — a Rust
-  expression-statement. The narrower `CallStmt` variant (over a generic
-  `ExprStmt`) reflects what's actually useful in v0.2: literals and var-refs
-  have no observable effect, so only calls earn statement-position
-  treatment. Surface widens to `ExprStmt` when/if a real use case appears.
-- **`TypeRef` is a newtype.** The single-field wrapper around `Ident` reads
-  more clearly than scattering `name: Ident` across consumers and reserves
-  the same Stage-2-extension shape that `Ident` / `SigiledIdent` already
-  use for inflection (α). v0.3+ generics will grow `TypeRef` with a
-  `params: Vec<TypeRef>` field; downstream code that destructures by
-  `.name` still works.
-- **Open type pass-through (B-3) lives in the emitter.** `emit_type_ref`
-  is a 2-arm match (`Sermo` → `String`, `Numerus` → `i64`, else verbatim)
-  — no lexer change, no parser table. A user-defined `Custom` type emits
-  as `Custom` and rustc adjudicates. Adding `structura` declarations later
-  populates the table without breaking pass-through consumers.
-- **PascalCase enforced at parse time (C-2).** PRD §4.9 commits to "hard
-  error, not a lint" on type-name casing. The lexer has no type-position
-  context, so the check happens in `parse_type_ref` — first char must be
-  ASCII-uppercase. New `ParseError::TypePositionRequiresPascalCase` carries
-  the offending name so the diagnostic can quote it.
-- **`redde` outside a function parses cleanly (C-4).** The parser doesn't
-  track function-nesting state; `redde 5.` at module level becomes a
-  `Stmt::Return` that lands inside `fn main()` at emit time. rustc rejects
-  the type mismatch (`fn main() -> ()` returning `i64`) with its own
-  error. Tracking nesting in a single-pass parser is the kind of
-  complexity Stage 1 doesn't want.
-- **`LexError::GenericsLookalike` reframes `ParseError::GenericsDeferred`.**
-  The framed parser variant would have been dead code: `<` is not in
-  Marain's lex alphabet, so the lexer fires `UnexpectedChar '<'` long
-  before any parser code runs. Catching `<` / `>` at the lex layer
-  reaches the user where their finger actually tripped and produces a
-  targeted "generics deferred to v0.3+ (PRD §4.11.6)" message instead of
-  the generic UnexpectedChar diagnostic.
-- **`parse_call` returns `CallExpr`; `parse_call_stmt` wraps it.** The
-  expression-side `parse_call` (in `expressions.rs`) is the canonical
-  argument-list parser; `parse_call_stmt` (in `grammar.rs`) just calls
-  it and expects a trailing period. No code duplication; trailing-comma
-  logic lives in one place.
-- **Callee disambiguation in `parse_primary`.** A `PlainIdent` followed
-  by `(` is a call; a `PlainIdent` without `(` is `ExpectedExpression`
-  (per PRD §4.5 variables always carry a sigil, so bare unsigiled idents
-  can never be variable references). One-token lookahead via the existing
-  `Parser::peek_kind_at`.
-- **Trailing commas accepted in both lists.** `(^x: Sermo, ^y: Numerus,)`
-  and `add(1, 2,)` both parse. Diff-friendly, no surface cost.
-- **`expressions.rs` split per locked C-1.** R13 pushed `grammar.rs` past
-  500 LOC. Split made: expression cascade + `parse_call` + `make_binop`
-  → `parser/expressions.rs` (269 LOC); statement productions stay in
-  `grammar.rs` (357 LOC). Cross-cutting helpers (`expect_kind`,
-  `expect_keyword`, `parse_sigiled_ident`) promoted to `pub(super)`.
-- **`ast.rs` test bloc split per CLAUDE.md sibling-file rule.** R13
-  AST growth crossed 500 LOC with tests dominating. Tests moved to
-  `ast_tests.rs` via `#[cfg(test)] #[path = "ast_tests.rs"] mod tests;`
-  — same pattern R11+R12 used on `parser/mod.rs` and `emit.rs`.
+_Full rationale: [`tasks/decisions/R13_functio_calls.md`](../tasks/decisions/R13_functio_calls.md). Summary list below._
+
+- **A-1 Function call scope.** Calls IN as both `Expr::Call` and `Stmt::Call`.
+- **A-2 Round split.** R13 ships declarations + calls together.
+- **B-1 `TypeRef` newtype.** Wraps `Ident`; reserves generics-grow seam (v0.3+ `params: Vec<TypeRef>`).
+- **B-2 Bare unit return.** `redde.` → `return;` supported.
+- **B-3 Open type pass-through.** `emit_type_ref` is a 2-arm match (`Sermo` → `String`, `Numerus` → `i64`); other PascalCase names pass verbatim.
+- **C-1 `grammar.rs` split timing.** Split when threshold crossed (it did); `parser/expressions.rs` extracted.
+- **C-2 PascalCase enforcement.** At `parse_type_ref` via `ParseError::TypePositionRequiresPascalCase`.
+- **C-3 Trailing commas.** Accepted in both param and arg lists.
+- **C-4 `redde` outside function.** Parses cleanly; lands inside `fn main`; rustc rejects the type mismatch.
+- **C-5 Empty param list.** Mandatory parens; empty `params` Vec.
+- **D-1 Two-pass emit + always-`fn main()`.** Top-level functions hoist above `fn main`; non-function stmts inside; cargo binary-crate requires `fn main`.
+- **D-2 Translation table location.** 2-arm match in `emit_type_ref` (no growth pressure).
+- **D-3 Param sigil emit.** `^x` → `x`, `@x` → `mut x` (same as `Stmt::Let`).
+- **D-4 Call emit shape.** Mechanical sigil-drop + integer-suffix.
+- **Reframe `GenericsDeferred` → `LexError::GenericsLookalike`.** Parser variant would have been dead code (`<` not in lex alphabet); moved to lex layer with targeted "deferred to v0.3+" diagnostic.
+- **Addition `Stmt::Call`.** Mid-implementation; narrower than `ExprStmt`. Only calls earn statement-position (literals/var-refs have no observable effect).
+- **`parse_call` is shared.** `parse_call_stmt` (statement) and `parse_primary` (expression) both call into `parse_call` for the argument list; trailing-comma logic lives in one place.
+- **Callee disambiguation in `parse_primary`.** `PlainIdent + (` → call; bare `PlainIdent` → `ExpectedExpression` (PRD §4.5 variables always carry a sigil).
+- **`ast.rs` test bloc split.** Sibling `ast_tests.rs` via `#[cfg(test)] #[path = "ast_tests.rs"] mod tests;` — same pattern R11+R12 used.
 
 ### 15.4 New AST shape
 

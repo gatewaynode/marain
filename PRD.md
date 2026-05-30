@@ -4,7 +4,7 @@ _Document status: **DRAFT**, v0.1-PRD-1. Sections marked PROPOSED await author r
 
 ## 1. Overview
 
-Marain is a Rust-flavored toy language that re-skins Rust syntax with Latin words, where Latin grammatical cases and verb moods carry semantic meaning, and which borrows a small set of ergonomic features from Python (indentation-significant blocks, triple-quoted strings, a dynamic value wrapper, and concise dict/list/tuple/f-string literals).
+Marain is a Rust-flavored artisan language that re-skins Rust syntax with Latin words, where Latin grammatical cases and verb moods carry semantic meaning, and which borrows a small set of ergonomic features from Python (indentation-significant blocks, triple-quoted strings, a dynamic value wrapper, and concise dict/list/tuple/f-string literals).
 
 The language is **staged** (§4.10): Stage 1 is a nominative-only Latin re-skin with Rust-fixed word order — the v0.1 target. Stage 2 is an opt-in, post-v0.1 layer that activates the full Latin case/conjugation grammar and enables free word order, paired with an LSP that turns the language into an interactive Latin pedagogy environment. Stage 3 is the Rust target.
 
@@ -409,9 +409,9 @@ Explicitly **not** required for v0.1: full declension enforcement, indentation b
 
 ### Stage 1 open questions
 
-S1-1. ~~**Section 4.2 mapping**~~ — **RESOLVED.** Approved with three amendments: ablative narrowed to trait bounds + lifetimes; dative narrowed to parameters + reassignment targets, governed by the "first to define is followed" rule (§4.2); vocative row removed; `DETONATIO!` added as the sanctioned out-of-phase exception.
+S1-1. ~~**Section 4.2 mapping**~~ — **RESOLVED** (§4.2).
 
-S1-2. ~~**Hello-world canonical form**~~ — **RESOLVED.** Macro-`!` split per §4.7 (small no-punct subset, `!` preserved otherwise). Statement terminator per §4.8 (period followed by newline or space). Control-structure-head terminator resolved 2026-05-25: `:` (Python-style); see §4.8 and §4.11.
+S1-2. ~~**Hello-world canonical form**~~ — **RESOLVED** (§4.7 macro-`!` split, §4.8 period terminator, §4.8/§4.11 `:` block heads).
 
 S1-3. ~~**Diacritics in identifiers.**~~ **RESOLVED** (§4.9). Forbidden in source and in source examples in docs; descriptive Latin prose in docs may use macrons.
 
@@ -451,14 +451,6 @@ S2-7. **Hybrid suggestion architecture (deterministic + LLM).** §4.10 commits t
 
 ## 12. Success Criteria for This PRD
 
-This PRD is ready to derive `ARCHITECTURE.md` from when:
+Stage 1 gates (§4.2 mapping, hello-world form, §4.9 lexer rules) all met — see §11. `ARCHITECTURE.md` is current through R13.
 
-1. ~~Section 4.2 (grammar mapping) is approved or amended.~~ **DONE** (S1-1).
-2. ~~The hello-world canonical form is committed.~~ **DONE** (S1-2: §4.7 + §4.8).
-3. ~~S1-3 and S1-4 are resolved (they affect lexer rules directly).~~ **DONE** (S1-3 + S1-4: §4.9).
-
-**All §12 gates are met for Stage 1.** The PRD is ready to derive `ARCHITECTURE.md` for the v0.1 Stage-1 implementation.
-
-Stage 2 has its own gating round before any `ARCHITECTURE.md` work for it: questions S2-1 through S2-7 in §11 must close, and the Stage 2 grammar specification must be drafted as a separate document.
-
-Remaining Stage 1 open questions (S1-5 through S1-12, deferred) may be deferred into `ARCHITECTURE.md` or post-v0.1 planning.
+Stage 2 has its own gating round: S2-1 through S2-7 must close and the Stage 2 grammar spec must be drafted as a separate document before any `ARCHITECTURE.md` Stage-2 work begins. Remaining S1-5 through S1-12 deferred to post-v0.x planning.
