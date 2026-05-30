@@ -1,0 +1,1 @@
+10_missing_period_interrumpe.lat:2:1: error: expected `.`, found end of file

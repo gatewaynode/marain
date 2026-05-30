@@ -1,0 +1,1 @@
+09_missing_colon_dum.lat:1:10: error: expected `:`, found `.`

@@ -1,0 +1,5 @@
+sit ^sum est 1 plus 2.
+sit ^prod est 3 per 4.
+sit ^quot est 10 divisus per 2.
+sit ^rem est 10 modulo 3.
+sit ^complex est 1 plus 2 per 3 minus 4.

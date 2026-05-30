@@ -20,6 +20,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 8 | §10 Testing Harness | **Closed** |
 | 9 | §12 Line Comments | **Closed** |
 | 10 | §13 Block Parsing + `si` | **Closed** |
+| 11+12 | §14 Operator Expressions + Control Flow | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -902,3 +903,292 @@ All R10 modifications land well under the 500-LOC target. The plausible future p
 - **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })`. The empty-block-via-`nihil.` story (PRD §4.11.4) is the user's escape hatch for "I need a block here but the body is intentional no-op." R10's `ExpectedIndent` mechanism is already compatible — `nihil.` is a real statement so it produces an `Indent`-then-`Nihil`-then-`Dedent` token stream that `parse_block` handles uniformly.
 - **`functio` body block (R13).** `parse_block` is reusable verbatim; `parse_function` will call it after the signature `(...) dat <Tipus> :`.
 - **R10 condition typing (R11+R12).** When `verum` / `falsum` and the operator expression family land, R10's `si 1 :` → `if 1 { }` regression goes away naturally (real conditions produce real `bool` expressions). No R10 architectural change required.
+
+## 14. Operator Expressions + Control Flow
+
+Rounds 11+12, batched per locked decision A. R11 adds the expression-level
+operator surface (precedence-climbing parser + Boolean literals + parens
+grouping). R12 finishes Stage 1's control-flow set (`aliter` / `aliter si`
+chain on the R10 `si`, plus `dum` / `semper` / `interrumpe.` / `continua.`).
+R10's `si 1 :` caveat — the parser could produce Rust that wouldn't typecheck
+— retires here: real Boolean conditions land in this round.
+
+### 14.1 Scope (v0.2)
+
+**In:**
+- Boolean literals `verum` / `falsum` as `Expr::BoolLit` atoms.
+- Parens `( expr )` as expression-grouping primary (precedence override).
+- Binary operators with Rust precedence (PRD §4.4): `vel` (||) → `et` (&&) →
+  `aequat` / `non aequat` (==, !=) → `minor quam` / `maior quam` /
+  `minor vel par` / `maior vel par` (<, >, <=, >=) → `plus` / `minus` (+, -)
+  → `per` / `divisus per` / `modulo` (*, /, %).
+- Unary prefix `non` (!), right-associative by recursion.
+- `IfStmt.else_branch: Option<ElseBranch>`; `ElseBranch::Block(Block)` for
+  terminal `aliter :`, `ElseBranch::If(Box<IfStmt>)` for `aliter si` chain.
+- `Stmt::While(WhileStmt)`, `Stmt::Loop(LoopStmt)`, `Stmt::Break(BreakStmt)`,
+  `Stmt::Continue(ContinueStmt)`.
+- `Parser::peek_kind_at(offset)` cursor primitive for the `non aequat`
+  lookahead and any future two-token disambiguation.
+
+**Out (deferred):** `pro <binding> in <iterable> :` (R14+R15); range tokens
+`..` / `..=` (R14+R15); `nihil.` (R14+R15); `functio` declarations (R13);
+labeled `break 'name` / `continue 'name`; `break <expr>` (loop expression
+value); type checking (delegated to rustc per PRD §5).
+
+### 14.2 Decomposition
+
+```
+crates/marain-core/src/
+  ast.rs                (modified)  + BoolLit, BinOpExpr + BinOp enum,
+                                       UnaryOpExpr + UnaryOp enum,
+                                       WhileStmt, LoopStmt, BreakStmt,
+                                       ContinueStmt, ElseBranch enum;
+                                       IfStmt grows else_branch; +7 tests
+  parser/
+    mod.rs              (modified)  + peek_kind_at; tests bloc moved out
+    mod_tests.rs        (new)       sibling test file (per CLAUDE.md
+                                    pressure-release decomposition)
+    grammar.rs          (modified)  + parse_or/and/equality/comparison/
+                                       additive/multiplicative/unary/primary
+                                       cascade; consume_comparison_completer;
+                                       parse_while/parse_loop/parse_break/
+                                       parse_continue; parse_if grows
+                                       aliter / aliter si chain; verum/falsum
+                                       atoms + paren grouping in parse_primary
+  emit.rs               (modified)  + BoolLit / BinOp / UnaryOp arms in
+                                       emit_expr (paren-wrap-always);
+                                       + emit_else_branch, emit_while,
+                                       emit_loop; break/continue inline;
+                                       tests bloc moved out
+  emit_tests.rs         (new)       sibling test file (decomposition twin)
+```
+
+No new module under `lexer/` — every keyword R11+R12 consumes was already in
+R4's table (`verum`, `falsum`, `et`, `vel`, `non`, `plus`, `minus`, `per`,
+`modulo`, `aequat`, `maior`, `minor`, `quam`, `par`, `divisus`, `aliter`,
+`dum`, `semper`, `interrumpe`, `continua`). The lexer was deliberately
+front-loaded in R4 against exactly this round.
+
+### 14.3 Decisions
+
+- **Latin for op variants, English for stmt variants.** `BinOp::Plus` /
+  `BinOp::DivisusPer` / `BinOp::NonAequat` (Latin, with compound names for
+  multi-word phrases); `Stmt::While` / `Stmt::Loop` / `Stmt::Break` /
+  `Stmt::Continue` (English, matching the Rust lowering target). Rule: enum
+  variants whose name mirrors a *user-facing Marain keyword* track the Rust
+  target; variants that name an *operator surface* use the Latin spelling
+  because the parser sees Latin tokens, not Rust symbols. Existing
+  `Stmt::Let` / `Stmt::If` unchanged (no rename sweep).
+- **Precedence climbing, not Pratt.** Seven cascaded `parse_<level>`
+  functions, one per Rust precedence rung (low to high: or, and, equality,
+  comparison, additive, multiplicative, unary). All binary levels are
+  left-associative via `while`-loop iteration; unary is right-associative
+  via tail recursion. Roughly the textbook recursive-descent shape; Pratt
+  parsing would buy nothing at this op count.
+- **Multi-word phrases consumed greedily at parse level.** `consume_comparison_completer`
+  fires when the parser sees `minor` or `maior` at comparison level: peeks
+  for `quam` (→ `<` / `>`) or `vel par` (→ `<=` / `>=`). Bare `minor` /
+  `maior` is a hard `UnexpectedToken` error. `divisus per` and `non aequat`
+  use the same shape (advance, expect completer). The lexer remains
+  multi-word-phrase-unaware — one token per word per PRD §4.4.
+- **`non` disambiguates via one-token lookahead.** At equality level, `non`
+  followed by `aequat` is the binary `!=` operator; everything else is the
+  unary prefix (handled at parse_unary). The equality level pre-empts so
+  parse_unary only ever sees prefix `non`. `Parser::peek_kind_at(offset)`
+  added for this case; clamps past-end peeks to the trailing `Eof` token
+  (lexer guarantees Eof is last).
+- **Boolean literals are a new `Expr::BoolLit` variant, not a fold into
+  `IntegerLit`.** Parallels `StringLit` / `IntegerLit` shape (struct with
+  `value` + `span`); emit produces bare `true` / `false` (Rust keywords but
+  never identifier-position here, so `escape_ident_for_rust` doesn't apply).
+- **Paren-wrap-always in emit.** Every `BinOp` / `UnaryOp` emits with
+  surrounding parens (`(a + b)`, `(!x)`). The parser tree already encodes
+  correct precedence; paren-everywhere ensures emission is bulletproof
+  against precedence drift in the Rust target. Cost: visual noise in the
+  emitted Rust. Benefit: zero risk of operator-precedence subtleties leaking
+  through the lowering.
+- **Expression-grouping parens (`(expr)`) in primary.** Cost is one match
+  arm; benefit is users don't have to memorize Rust's precedence table to
+  write arithmetic that overrides defaults. The parser unwraps to the
+  inner expression — no `ParenExpr` AST node, because precedence is
+  structurally encoded in the tree shape after parsing.
+- **`aliter` recognition by indent-aligned next-token.** After `parse_block`
+  returns from the then-body, the parser peeks for `Aliter`. If the user
+  writes `aliter` at the wrong indent, the lexer's Dedent cascade has
+  already moved past the `si`'s context — `Aliter` either won't be the
+  next token, or it'll belong to an outer construct. Indent alignment is
+  enforced implicitly by the layout tokens, not by a parser check.
+- **`aliter si` recurses through `parse_if`.** A chain `aliter si … aliter
+  si … aliter :` becomes `IfStmt { else_branch: Some(If(Box<IfStmt {
+  else_branch: Some(If(Box<IfStmt { else_branch: Some(Block(...)) }>)) }>))
+  }`. Single nested AST shape (TODO.md sub-decision #1 confirmed); emit
+  walks the chain by recursing into `emit_if` from `emit_else_branch`.
+- **`semper :` emits `loop { … }` (no `Semper` rename of `Stmt::Loop`).**
+  AST name matches Rust target per the naming rule above; PRD §4.11.2
+  keyword `semper` ("always") drives parser dispatch.
+- **`interrumpe.` and `continua.` are statements terminated by `.`.** Both
+  carry just a `span`; no payload (unlabeled, no value-from-break in v0.2 —
+  TODO.md sub-decision #7).
+- **No new `ParseError` variants.** Every R11+R12 failure mode rides on
+  `UnexpectedToken { expected: &'static str }` with descriptive labels
+  ("`per` to complete `divisus per`", "`quam` or `vel par` to complete
+  `maior` comparison", etc.). Consistent with R10's stance — variant
+  proliferation has its own future tax.
+- **Test files split via `#[path = "…_tests.rs"] mod tests;`.** R11+R12
+  growth pushed `parser/mod.rs` to 905 LOC and `emit.rs` to 899 LOC, both
+  in pressure-release territory dominated by test code. Per CLAUDE.md
+  ("If `#[cfg(test)] mod tests` dominates, move it to a sibling file …
+  that's a clean decomposition, not a workaround"), tests moved to
+  `parser/mod_tests.rs` (836 LOC) and `emit_tests.rs` (554 LOC). Production
+  files now at 73 and 349 LOC respectively. The two sibling test files
+  remain in pressure-release (one cohesive helper set per file); module
+  doc-comment carries the required justification.
+
+### 14.4 New AST shape
+
+```rust
+pub enum Stmt {
+    Let(LetStmt),
+    MacroCall(MacroCallStmt),
+    If(IfStmt),
+    While(WhileStmt),     // new
+    Loop(LoopStmt),       // new
+    Break(BreakStmt),     // new
+    Continue(ContinueStmt), // new
+}
+
+pub struct IfStmt {
+    pub cond: Expr,
+    pub then_block: Block,
+    pub else_branch: Option<ElseBranch>, // new
+    pub span: Span,
+}
+
+pub enum ElseBranch {                    // new
+    Block(Block),       // aliter :
+    If(Box<IfStmt>),    // aliter si <cond> :
+}
+
+pub enum Expr {
+    StringLit(StringLit),
+    IntegerLit(IntegerLit),
+    BoolLit(BoolLit),     // new
+    VarRef(SigiledIdent),
+    BinOp(BinOpExpr),     // new
+    UnaryOp(UnaryOpExpr), // new
+}
+
+pub enum BinOp {                              // new
+    Plus, Minus, Per, DivisusPer, Modulo,
+    Aequat, NonAequat,
+    MinorQuam, MaiorQuam, MinorVelPar, MaiorVelPar,
+    Et, Vel,
+}
+
+pub enum UnaryOp { Non }                      // new
+```
+
+Carry-over α (inflection slot, R5/§7.5) untouched. The new expr / stmt
+variants have no identifier-bearing positions of their own; condition and
+operand identifiers carry the slot via the existing `SigiledIdent`.
+
+### 14.5 Test coverage
+
+- **`ast.rs`** — 7 new unit tests covering each new variant's `span()`
+  dispatch, `BinOp::as_rust` / `UnaryOp::as_rust` mappings, and `ElseBranch`
+  span dispatch (Block + If shapes).
+- **`parser/mod_tests.rs`** — 34 new tests:
+  - Atoms: `verum` / `falsum` → `BoolLit`.
+  - All 13 binary ops recognized in let RHS position.
+  - Multiplicative binds tighter than additive (`a plus b per c` → nested).
+  - Left-associativity for repeated same-precedence ops.
+  - Unary `non` prefix; right-associative `non non verum`.
+  - Parens grouping flips precedence.
+  - Full precedence cascade (all six levels in one expression).
+  - Error path: bare `maior` / `minor` / `divisus` / `minor vel` (no
+    completer) all surface as `UnexpectedToken` with descriptive labels.
+  - `si` + terminal `aliter`; `si` + `aliter si` chain; multi-arm chain
+    `si … aliter si … aliter si … aliter :`.
+  - `dum` simple body; `semper` simple body; `semper` with `interrumpe`;
+    `dum` with `continua`.
+  - Error path: `dum` missing colon; `interrumpe` missing period.
+  - `si <cond>` accepts binop conditions.
+- **`emit.rs` / `emit_tests.rs`** — 22 new tests:
+  - `verum` → `true`, `falsum` → `false`.
+  - All 13 binary ops emit the right Rust operator, wrapped in parens.
+  - Unary `non` → `(!x)`.
+  - Precedence-preservation via paren nesting.
+  - `aliter :` → ` else { ... }`.
+  - `aliter si … aliter :` → ` else if … else { ... }` chain.
+  - `dum <cond> :` → `while <cond> { ... }`.
+  - `semper :` → `loop { ... }`.
+  - `interrumpe.` → `break;`; `continua.` → `continue;`.
+  - R10 caveat retired: `si verum et falsum :` produces typecheckable Rust.
+- **Goldens** — 6 new emit fixtures (`12_arithmetic`, `13_booleans`,
+  `14_comparison`, `15_aliter_chain`, `16_dum`, `17_semper_interrumpe`) and
+  3 new error fixtures (`errors/08_bare_maior`, `errors/09_missing_colon_dum`,
+  `errors/10_missing_period_interrumpe`).
+
+**Test count delta: +65.** Workspace total at R11+R12 close: **354** (was
+289 at R10 close). `cargo fmt --check`, `cargo clippy --all-targets -D
+warnings`, `cargo test --all` all clean.
+
+### 14.6 Sentrux signal at R11+R12 close
+
+`session_start` taken before any code change (signal 7089, the R10 close
+number); `session_end` after the round + the test-file split:
+`signal_delta` -85 (7089 → 7005), `cycles_change` 0, `coupling_change` 0.0,
+DSM `above_diagonal` stays 0 (clean layering preserved), `import_edges`
+39 → 38 (the test-file split removed one inbound edge from parser/mod.rs
+to its old in-file test bloc). The signal drop tracks the increase in
+total LOC and surface area; sentrux's rule engine reports zero violations.
+
+### 14.7 Pressure-release tier 1 invoked (test files only)
+
+R11+R12 is the first round to trip the 500-LOC pressure-release rule. The
+decomposition pattern is `#[cfg(test)] #[path = "…_tests.rs"] mod tests;`
+per CLAUDE.md's explicit guidance ("that's a clean decomposition, not a
+workaround"). Two new files:
+
+- `crates/marain-core/src/parser/mod_tests.rs` — 836 LOC; justification in
+  module doc-comment: shared `parse_ok` / `parse_err` helpers exercise one
+  cohesive surface, splitting by R-round forces helper chasing.
+- `crates/marain-core/src/emit_tests.rs` — 554 LOC; justification in
+  module doc-comment: shared `parse_and_emit` / `parse_and_emit_err`
+  helpers, one helper set per file matches the convention.
+
+Production-side files all under the 500-LOC target after the split:
+`parser/mod.rs` 73 LOC, `parser/grammar.rs` 428 LOC, `emit.rs` 349 LOC,
+`ast.rs` 487 LOC. The plausible next pressure point is `parser/grammar.rs`
+once R13 adds `functio` parsing (signature + body); a further parse-time
+decomposition there would split per syntactic family (declarations,
+statements, expressions).
+
+### 14.8 Forward hooks
+
+- **`pro` + range tokens (R14+R15).** `parse_for` will mirror `parse_while`
+  shape with a `<sigiled-binding> in <iterable>` head. Range expressions
+  `a..b` / `a..=b` slot into the expression cascade at a new level below
+  logical-or (`..` is Rust's lowest infix precedence). New lexer tokens
+  `DotDot` / `DotDotEq` arrive in R14; `peek_kind_at` reused for the
+  `..` / `..=` disambiguation.
+- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })`. PRD
+  §4.11.4 promises this as the "I need a block here but no behavior" escape
+  hatch. `parse_block` is already compatible — `nihil.` is a real statement,
+  so it produces an `Indent`-then-`Nihil`-then-`Dedent` stream the existing
+  loop handles uniformly.
+- **`functio` declaration block (R13).** `parse_block` is reusable verbatim;
+  `parse_function` will call it after the signature `(<params>) dat
+  <Tipus> :` per PRD §4.11.1. Function bodies become a recursion source for
+  `redde <expr>.` (return) — a new `Stmt::Return(ReturnStmt)` variant.
+- **Labeled `break 'name` / `continue 'name`.** Out of v0.2 scope (TODO.md
+  sub-decision #7). When added, `BreakStmt` / `ContinueStmt` grow an
+  `Option<Ident>` field for the label name.
+- **`break <expr>` as loop-value-from-break.** Rust's loops are expressions
+  whose value comes from `break value`. Not in v0.2 scope. When added,
+  `BreakStmt` grows an `Option<Expr>` field.
+- **Op-name standardization (Stage 2).** Stage 2 may re-inflect operators
+  based on Latin grammatical context. The current `BinOp` enum's Latin
+  variant names (`DivisusPer`, `MinorQuam`, etc.) are spelled at the lemma
+  level — adding inflection metadata would parallel the existing carry-over
+  α pattern on identifier nodes.

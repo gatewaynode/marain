@@ -1,0 +1,5 @@
+sit ^t est verum.
+sit ^f est falsum.
+sit ^both est verum et falsum.
+sit ^either est verum vel falsum.
+sit ^negated est non verum.

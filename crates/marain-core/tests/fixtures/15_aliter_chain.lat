@@ -1,0 +1,7 @@
+sit ^x est 2.
+si ^x aequat 1 :
+    dic "one".
+aliter si ^x aequat 2 :
+    dic "two".
+aliter :
+    dic "other".

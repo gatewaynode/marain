@@ -1,0 +1,1 @@
+08_bare_maior.lat:1:21: error: expected keyword `quam` or `vel par` to complete `maior` comparison, found integer literal

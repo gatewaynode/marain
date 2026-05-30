@@ -1,38 +1,40 @@
-# Continuity — R9 closed, v0.2 architecture locked, sentrux baselined
+# Continuity — R11+R12 closed, expression + control-flow surface complete
 
-_Rewritten 2026-05-25 mid-evening. Captures: A/B/C/D architectural decisions locked, PRD §4.12 amendment (line comments), `.sentrux/rules.toml` created, R9 (line comments) implemented end-to-end, ARCHITECTURE.md §12 closed. Rewrite on next use._
+_Rewritten 2026-05-29 (post-R11+R12). Captures: locked naming principle for AST + op variants (English/Latin split), full operator precedence cascade landed, control-flow statement set complete for Stage 1, first pressure-release invocation in v0.2 (test-file split). Rewrite on next use._
 
 ## Where We Are
 
-v0.2 is in active implementation. R9 (line comments) closed clean; **R10 (block parsing) is the next round's entry point** and has not yet been framed. Three architectural decisions for v0.2 are locked (B/C/D); round granularity (A) is also locked.
+v0.2 implementation is mid-stride. **R11+R12 (operator expressions + control flow) closed clean.** Next round entry point is **R13 (`functio` declarations)** — sketched in `tasks/TODO.md` under `## v0.2 implementation plan` but not yet framed.
 
 **Session arc (chronological):**
 
-1. **Re-aligned** via CONTINUITY/PRD/ARCHITECTURE/TODO. Surfaced four open architectural questions (A round granularity, B type system scope, C lowering pass, D comment syntax) for v0.2.
-2. **Locked A** in conversation: batched where dependencies overlap. R9 alone (everything depends on it), R10+R11 batched (expressions feed control flow), R12 alone, R13+R14 batched (small).
-3. **Locked B/C/D** via the question-slate cadence. User answered in `tasks/notes/v0.2_loops_final_decisions.md`:
-   - **B-3**: open type pass-through with a 2-entry emitter translation table (`Sermo`→`String`, `Numerus`→`i64`); generics rejected with `ParseError::GenericsDeferred`.
-   - **C-2**: defer lowering pass; parser→Ast direct; Stage 2 hook stays documented in ARCHITECTURE §7.8.
-   - **D**: `//` line comments only; `/* */` reserved syntax with explicit deferred-feature error; `///` doc comments unscoped.
-4. **PRD §4.12 amendment** + supporting doc updates landed in one parallel batch (ARCHITECTURE §11 η entry, lexicon Structural Punctuation table, `tasks/TODO.md` new `## v0.2 implementation plan` section with rounds R9–R14 ordered).
-5. **Sentrux baseline.** `session_start` at signal 7079. `.sentrux/rules.toml` created with 20 architectural rules (2 constraints + 18 boundaries) encoding the pipeline DAG from ARCHITECTURE §§2,6,7,8. Free tier mechanically checks 4/20; the remaining 16 are documented intent. **`test_gaps` reports a misleading ~5% coverage** — tool-calibration artifact (sentrux's heuristic doesn't see inline `#[cfg(test)] mod tests`); actual coverage is 272 tests passing.
-6. **R9 framing** → user approved without pushback.
-7. **R9 implementation** in a single parallel-Write batch: `lexer/comments.rs` (new, 80 LOC + 7 tests), `lexer/cursor.rs` (`peek_at` + 3 tests), `lexer/error.rs` (`BlockCommentsDeferred` variant + 1 test), `lexer/mod.rs` (start-of-line + mid-line dispatch + 9 driver tests), 4 fixture files. Quality gates clean on first try (one `cargo fmt` nit auto-fixed). Sentrux `session_end`: signal_delta +3 (7079→7082), 0 cycles change, 0 coupling change, DSM `above_diagonal` stays 0, `check_rules` passes.
-8. **R9 close docs**: ARCHITECTURE §12 (full round write-up), §0 reading-order table extended through R9, §11 η entry collapsed to one-liner pointer; `tasks/TODO.md` R9 checked off + completion entry appended.
+1. **Re-aligned** via PRD / ARCHITECTURE / CONTINUITY (stale at R9) / TODO. Skimmed §13 to confirm R10 closed.
+2. **R11+R12 framing slate** with 12 numbered sub-decisions (user requested numbering for tighter feedback). User answered each crisply — including a brief pivot on naming convention: first user picked "(c) Latin everywhere, rename old `Stmt::Let` → `Stmt::Sit`, `Stmt::If` → `Stmt::Si`," then course-corrected after seeing the implications: **AST keeps English variant names**, BinOp / UnaryOp variants stay Latin per #10. Reverted to position (a).
+3. **Implementation in five tracked tasks** (TaskCreate-managed): AST → parser → emit → tests+goldens → quality gates + docs. Sentrux session_start at 7089.
+4. **Code changes landed in three substantial writes:**
+   - `ast.rs` rewrite: new variants, BinOp/UnaryOp enums + `as_rust` methods, naming-rule note in module doc-comment.
+   - `parser/grammar.rs` rewrite: 7-level precedence-climbing cascade, multi-word phrase consumption, four new control-flow parsers, aliter chain via `parse_if` recursion.
+   - `emit.rs` surgical edits: imports, new arms in `emit_stmt` and `emit_expr`, new functions `emit_else_branch` / `emit_while` / `emit_loop`.
+   - Plus `parser/mod.rs` got `Parser::peek_kind_at(offset)` for `non aequat` lookahead.
+5. **Test additions** in three batches: 7 ast unit tests, 34 parser tests, 22 emit tests, 6 emit goldens, 3 error goldens. Goldens auto-generated via `MARAIN_UPDATE_GOLDENS=1`; all matched the predicted outputs (paren-wrap-always emit shape, descriptive `UnexpectedToken` labels for bare phrase components).
+6. **Pressure-release tier 1 invoked for the first time in v0.2.** Both `parser/mod.rs` (905 LOC) and `emit.rs` (899 LOC) crossed 500 after R11+R12 growth, dominated by test code. Per CLAUDE.md, split into sibling `mod_tests.rs` (836) and `emit_tests.rs` (554) via `#[cfg(test)] #[path = "…_tests.rs"] mod tests;`. Production-side files all back under target. Both new sibling test files carry module-doc justification per the pressure-release rule.
+7. **Sentrux session_end after split:** signal 7089 → 7005 (Δ−85), pass=true, 0 cycles change, 0 coupling change, DSM `above_diagonal` stays 0. Signal drop tracks added surface area, not architectural degradation.
+8. **R11+R12 close docs:** ARCHITECTURE §14 (full round write-up — scope, decomposition, decisions, AST shape, test coverage, sentrux, pressure-release, forward hooks); §0 reading-order extended; `tasks/TODO.md` R11+R12 checked off + completion entry appended at the top of `## Completed`.
 
 ### Test count at session close
 
-**272 tests passing** workspace-wide (was 252 at v0.1/R8 close; +20 from R9). Per binary: marain-core unit 219, e2e_hello_world 1, emit_goldens 1, error_goldens 1, marain-cli unit 40, cli_e2e 10. `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` all clean.
+**354 tests passing** workspace-wide (was 289 at R10 close; +65 from R11+R12). Per binary: marain-core unit 301, e2e_hello_world 1, emit_goldens 1, error_goldens 1, marain-cli unit 40, cli_e2e 10. `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` all clean.
 
 ### Sentrux at session close
 
-| Metric | Baseline (R9 open) | R9 close |
-|--------|--------------------|----------|
-| Quality signal | 7079 | 7082 |
+| Metric | Baseline (R11+R12 open) | R11+R12 close |
+|--------|-------------------------|----------------|
+| Quality signal | 7089 | 7005 |
 | Acyclicity score | 10000 | 10000 |
 | DSM above_diagonal | 0 | 0 |
 | Cycles | 0 | 0 |
-| Rules pass | 4/20 enforced | 4/20 enforced |
+| Import edges | 39 | 38 |
+| Rules pass | 4/4 enforced | 4/4 enforced |
 
 `session_end` reports "Quality stable or improved."
 
@@ -40,47 +42,51 @@ v0.2 is in active implementation. R9 (line comments) closed clean; **R10 (block 
 
 ### Added this session
 
-- `.sentrux/rules.toml` — 20 architectural rules (pipeline DAG) encoding ARCHITECTURE §§2,6,7,8 invariants
-- `crates/marain-core/src/lexer/comments.rs` — `scan_line_comment` + 7 unit tests
-- `crates/marain-core/tests/fixtures/09_line_comments.lat` + `.expected.rs`
-- `crates/marain-core/tests/fixtures/errors/06_block_comments_deferred.lat` + `.expected.txt`
-- `tasks/notes/v0.2_loops_final_decisions.md` — user's B/C/D answers
+- `crates/marain-core/src/parser/mod_tests.rs` — sibling test file, 836 LOC, doc-comment justified
+- `crates/marain-core/src/emit_tests.rs` — sibling test file, 554 LOC, doc-comment justified
+- `crates/marain-core/tests/fixtures/12_arithmetic.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/13_booleans.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/14_comparison.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/15_aliter_chain.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/16_dum.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/17_semper_interrumpe.lat` + `.expected.rs`
+- `crates/marain-core/tests/fixtures/errors/08_bare_maior.lat` + `.expected.txt`
+- `crates/marain-core/tests/fixtures/errors/09_missing_colon_dum.lat` + `.expected.txt`
+- `crates/marain-core/tests/fixtures/errors/10_missing_period_interrumpe.lat` + `.expected.txt`
 
 ### Modified this session
 
-- `PRD.md` — new §4.12 (Comments) committing `//` line comments + `/* */` reserved-deferred + `///` unscoped
-- `ARCHITECTURE.md` — §0 reading-order row added for R9, §11 η entry collapsed to one-liner pointer, new §12 (Line Comments, full round close — scope, decomposition, decisions, error variant, test coverage, sentrux signal, pressure-release, forward hooks)
-- `docs/core-lexicon.md` — Structural Punctuation table gains `//` and `/*` rows
-- `tasks/TODO.md` — new `## v0.2 implementation plan` section (R9–R14 ordered with B-3/C-2/D decisions inline + per-round open sub-decisions); R9 checked off; R9 completion entry appended to Completed
-- `crates/marain-core/src/lexer/cursor.rs` — `peek_at(offset)` API + 3 unit tests
-- `crates/marain-core/src/lexer/error.rs` — `BlockCommentsDeferred { span }` variant + 1 unit test
-- `crates/marain-core/src/lexer/mod.rs` — start-of-line `//` peek (comment-only lines blank for indent); mid-line `/` dispatch (`//`→comment, `/*`→`BlockCommentsDeferred`, `/`→`UnexpectedChar`); 9 new driver tests
+- `crates/marain-core/src/ast.rs` — full rewrite with new variants + naming-rule doc-comment; 487 LOC (487 incl. 7 new tests at the bottom)
+- `crates/marain-core/src/parser/mod.rs` — `peek_kind_at` added, test bloc moved to sibling; now 73 LOC
+- `crates/marain-core/src/parser/grammar.rs` — full rewrite with precedence cascade + control-flow parsers; 428 LOC
+- `crates/marain-core/src/emit.rs` — surgical edits for new variants + control-flow emit; test bloc moved to sibling; now 349 LOC
+- `ARCHITECTURE.md` — §0 reading-order row added for R11+R12; new §14 (full round close: 14.1 through 14.8)
+- `tasks/TODO.md` — R11+R12 entry checked off; completion entry appended to `## Completed`
 
 ### Untouched but worth noting
 
-- `crates/marain-core/src/parser/` — still v0.1 scope; will gain its first v0.2 surface in R10 (block parsing).
-- `crates/marain-core/src/emit.rs` — still v0.1 scope; R10 may need block-aware emit; R11+R12 will exercise it heavily.
-- `crates/marain-core/src/lexer/keywords.rs` — 37 keyword entries (unchanged this session; R9 added no keywords).
-- `tasks/LESSONS.md` — still empty (no user corrections this session worth capturing).
+- `crates/marain-core/src/lexer/` — no changes (R4 was front-loaded against exactly this round; every R11+R12 keyword was already in the table).
+- `crates/marain-core/src/lexer/keywords.rs` — 37 keyword entries unchanged.
+- `tasks/LESSONS.md` — still empty (no user corrections this session worth capturing — the brief naming-pivot mid-framing was a course-correct, not a lesson).
 - `tasks/BUGS.md` — still empty.
 - `hello.lat` at repo root (untracked) — user's manual-test scratchpad, unchanged.
+- `PRD.md` — no spec changes this session.
+- `docs/core-lexicon.md` — no changes (R11+R12 keywords already documented from prior rounds).
 
 ## What's Next (next session's entry point)
 
-**R10 — Block parsing.** Per locked decision A, R10 ships alone. Every other v0.2 round depends on the parser consuming `Indent`/`Dedent` tokens (which the lexer has emitted since R4) and exposing a block-parsing API.
+**R13 — Function declarations.** Per locked decision A, R13 ships alone (functio is large surface). Per locked decision B-3, types are open pass-through with a 2-entry emitter translation table (`Sermo`→`String`, `Numerus`→`i64`); generics rejected with `ParseError::GenericsDeferred`.
 
-**Likely R10 framing slate (not yet committed):**
+**Likely R13 framing slate (not yet committed — fresh framing round expected):**
 
-1. **Block-binding AST shape.** A `Block { stmts: Vec<Stmt>, span: Span }` newtype, or just `Vec<Stmt>` inline at each block-bearing parent? Recommend the newtype — Span carries the indented region, consumers don't recompute.
-2. **Empty-block rule** (closes the open R10 sub-decision in TODO.md). `nihil.` required, or empty `Indent`/`Dedent` allowed? Recommend `nihil.` required (matches PRD §4.11.4 spirit). Empty-comment-only blocks are already a parse error per PRD §4.12.
-3. **Test substrate without a parent construct.** R10 lands before R11 (control-flow heads) and R12 (functio). To exercise `parse_block` end-to-end before R11, either (a) test-only API exposure, or (b) bundle a minimal `if` head into R10 just for the substrate. Recommend (a) — keeps single-feature-per-round discipline.
-4. **New `ParseError` variants.** Likely `ExpectedIndent`, `ExpectedDedent`, `EmptyBlock`. Confirm trio in R10 framing.
-5. **Block nesting limit?** Marain's lexer already enforces well-formed Indent/Dedent pairing; parser doesn't need depth checks. Don't over-engineer.
+1. **`Stmt::Function(FunctionStmt)` AST shape** with `name: Ident`, `params: Vec<Param>`, `return_type: Option<TypeRef>`, `body: Block`, `span`. `Param { name: SigiledIdent, type_ref: TypeRef, span }`. `TypeRef` likely a newtype wrapping `Ident` (Stage 1 has no generics); the emitter translation table handles `Sermo`→`String` etc.
+2. **`Stmt::Return(ReturnStmt)`** for `redde <expr>.` — straightforward.
+3. **Mandatory parens** on signature per PRD §4.11.1, including for zero-arg `functio foo() :` (per locked sub-decision).
+4. **Unit return** when `dat` clause omitted — emit produces no `-> ()` annotation; let Rust infer (per locked sub-decision).
+5. **`ParseError::GenericsDeferred`** new variant — first new ParseError variant since R5 (R10 / R11+R12 both stayed on `UnexpectedToken`). Justification: generics carry a deferred-feature message that `UnexpectedToken { expected: "type identifier (generics deferred to v0.3+)" }` can roughly approximate but a dedicated variant gives the parser a clean place to localize the deferred-feature messaging if the rule grows.
+6. **Pressure-release watch on `parser/grammar.rs`** — currently 428 LOC; R13 adds function-signature parsing (params loop + type parsing + return-type optional clause). Could push it over 500. Consider whether to pre-emptively split into `parser/{statements,expressions,types}.rs` family or wait for actual pressure.
 
-**Other open sub-decisions** (each addressed in its own round, all noted in `tasks/TODO.md`):
-- R11+R12: `else if` chain shape — single nested AST node vs two emitter-assembled (recommendation: single).
-- R13: mandatory parens for zero-arg `functio foo() :` (recommendation: yes, per PRD §4.11.1).
-- R13: unit return — `dat` clause omission already PRD-committed; confirm emit produces no `-> ()`.
+**Other open sub-decisions** (each in its own round, all noted in `tasks/TODO.md`):
 - R14+R15: emit shape for `nihil.` — `();` vs `{}` (recommendation: `();`).
 
 ## Carry-over Concerns (status at session close)
@@ -88,60 +94,72 @@ v0.2 is in active implementation. R9 (line comments) closed clean; **R10 (block 
 | Concern | Status |
 | ------- | ------ |
 | (α) AST inflection slot | **RESOLVED** in R5 |
-| (β) 500-LOC lexer | **RESOLVED** in R4; mod.rs at ~635 incl. tests after R9 — production code still well under target |
+| (β) 500-LOC lexer | **RESOLVED** in R4 |
 | (γ) `Variabile` runtime injection | **PINNED** for when Variabile literals enter the language |
-| (δ) Hand-rolled CLI parsing | **RETIRED** 2026-05-23 (PRD §9 amended; clap pinned) |
+| (δ) Hand-rolled CLI parsing | **RETIRED** 2026-05-23 |
 | (ε) Test strategy | **RETIRED** in R8 |
 | (ζ) Cross-file Stage 2 diagnostics | **PINNED**, future-only |
 | (η) Comment syntax | **RETIRED** 2026-05-25 via PRD §4.12 + R9/§12 |
 | (θ) Stage 2 `(lemma, inflection)` tokens | **PINNED** for Stage 2 |
 | Workspace inheritance for shims | **RESOLVED** in R6 |
+| R10's `si 1 :` typecheck caveat | **RETIRED** in R11+R12 (boolean conditions now produce typecheckable Rust) |
 
 Three concerns remain pinned: γ (Variabile), ζ (cross-file Stage 2), θ (Stage 2 inflection tokens). All are post-v0.2.
 
 ## Decisions Locked This Session
 
-For full rationale see `tasks/notes/v0.2_loops_final_decisions.md` and PRD §4.12.
-
 | Topic | Decision |
 | ----- | -------- |
-| Round granularity (A) | Batched where dependencies overlap; one-feature-per-round otherwise. R10 solo; R11+R12 batch; R13 solo; R14+R15 batch. |
-| Type system scope (B-3) | Open pass-through; emitter translation table (`Sermo`→`String`, `Numerus`→`i64`); generics rejected with `ParseError::GenericsDeferred`. |
-| Lowering pass (C-2) | Deferred; parser→Ast direct; Stage 2 hook stays documented in ARCHITECTURE §7.8. |
-| Comment syntax (D) | `//` line comments for v0.2; `/* */` reserved syntax with explicit deferred-feature `LexError`; `///` doc comments unscoped. |
-| `.sentrux/rules.toml` adoption | 20 rules (2 constraints + 18 boundaries); free tier checks 4 mechanically; rest documented intent. Re-run `check_rules` per round. |
-| ARCHITECTURE round numbering | R{n} → §{n+3} starting from R9 (R9=§12, R10=§13, …). §11 stays the cross-cutting Stage 2 forward-hooks accretion zone. |
+| AST naming rule | English for Stmt variants (track Rust target); Latin for BinOp/UnaryOp variants (track operator surface). Existing `Stmt::Let`/`If` unchanged. Compound Latin words allowed for multi-word ops (`DivisusPer`, `MinorVelPar`, `NonAequat`). Documented in `ast.rs` module doc-comment. |
+| Else-chain AST shape | `IfStmt.else_branch: Option<ElseBranch>` where `ElseBranch::Block` is terminal `aliter` and `ElseBranch::If(Box<IfStmt>)` is `aliter si` chain (single nested shape; recursion source for `emit_else_branch`). |
+| Operator precedence | Rust precedence verbatim per PRD §4.4 — 7-level cascade or → and → equality → comparison → additive → multiplicative → unary → primary. All binary levels left-associative; unary `non` right-associative by recursion. |
+| Multi-word phrase resolution | Greedy at parse level — `minor`/`maior` advance + peek for `quam` or `vel par`; `divisus` peek for `per`; `non` peek for `aequat` at equality level. Bare components are hard errors with descriptive `UnexpectedToken` labels. |
+| `non` disambiguation | One-token lookahead via new `Parser::peek_kind_at`. `non aequat` at equality level is binary `!=`; everything else is unary prefix (handled at `parse_unary`). |
+| Boolean literal AST | New `Expr::BoolLit` variant (parallels `IntegerLit` / `StringLit` shape); emit produces bare `true`/`false`. |
+| Emit precedence safety | Paren-wrap-always — every BinOp/UnaryOp emits with surrounding parens. Bulletproof against Rust-precedence drift; the visual noise is accepted. |
+| `(expr)` grouping in primary | Supported — one match arm in `parse_primary`. No `ParenExpr` AST node (precedence is structurally encoded post-parse). |
+| `aliter si` parsing | `parse_if` recurses through itself for the chain; no special "is chain" detection — the same code handles single-arm and multi-arm. |
+| Stmt::Loop name | English `Loop` for the AST (matches Rust target); `semper` keyword drives parser dispatch. |
+| `interrumpe.` / `continua.` shape | Statement-level, period-terminated, no payload (unlabeled, no break-value). Labeled break + break-value are post-v0.2. |
+| Zero new ParseError variants | R11+R12 rides entirely on `UnexpectedToken { expected: &'static str }` with descriptive labels. Continues R10's stance against variant proliferation. |
+| Test-file decomposition pattern | `#[cfg(test)] #[path = "…_tests.rs"] mod tests;` per CLAUDE.md. First v0.2 invocation. Each sibling file carries module-doc justification (shared helper set, one cohesive surface). |
 
 ## Collaboration Patterns (refined this session)
 
-- **Question slate cadence proven for architecture too.** Same format worked for B/C/D as for v0.2 vocabulary in the prior session — sub-options + recommendation + rationale per question; user answered in `tasks/notes/v0.2_loops_final_decisions.md`. The `tasks/notes/` location matched user's referent this time (the previous session's misplacement was a one-time miss; the directory now exists).
-- **PRD/lexicon/ARCH/TODO four-file batch for spec changes.** PRD §4.12 + ARCHITECTURE §11 η + lexicon Structural Punctuation + TODO v0.2 plan all landed in one parallel-write batch. Clean. Replicate for future spec changes.
-- **Sentrux MCP per-round cadence.** `session_start` at round-open, `session_end` at round-close. Free tier mechanically enforces ~4 rules; the rest document architectural intent. DSM `above_diagonal` is the load-bearing canary for layering regressions.
-- **Write-based full-file rewrites over Edit chaining for big touches.** R9's `lexer/mod.rs` had 4 separate insertion points; a single `Write` of the entire file (after a fresh `Read`) was faster and safer than 4 sequential `Edit` calls competing on file state. Reserve `Write` for files just-read fresh; `Edit` for surgical localized changes.
-- **Task-tool nudge ignored** per session convention — the harness fires the reminder regularly; consistent to ignore.
+- **Numbered sub-decisions for framing slates.** User asked for numbering on the second framing message after the first one was hard to respond to. Adopted: every framing slate now numbers sub-decisions, user replies inline by number. **Cleanest framing-feedback shape encountered to date — replicate going forward.**
+- **Course-corrections mid-framing are cheap if caught early.** User answered the framing slate, then re-read the implications, caught a misread (#10 + position (c) interaction), and corrected before any code landed. No churn cost. Surfaces a meta-pattern: spend a beat re-confirming the *implications* of a decision before locking, not just the decision itself.
+- **Goldens auto-generation via `MARAIN_UPDATE_GOLDENS=1` is reliable when emit shape is well-understood.** All 9 new goldens (6 emit + 3 error) matched predictions exactly on first run. The pattern is: write the `.lat` source, mentally predict the `.expected.{rs,txt}`, run with the env var, spot-check the generated file. Faster than hand-writing expecteds.
+- **Sentrux session_start → session_end bracket per round** continues to work. `scan` must precede `session_start` (learned this round — the tool errors with `No scan data` otherwise).
+- **Test-file decomposition is mechanical** when the trigger is "test bloc dominates a production file." `sed 's/^    //'` extracts and dedents in one shot; the `#[path]` attribute is a clean two-line replacement in the production file. Total cost: ~5 minutes including format/clippy/test re-verification.
+- **Sibling test files retain module-doc justification.** Even when the split itself is the decomposition, the resulting sibling can still exceed 500 LOC if the test bloc is large enough; in that case, the justification doc-comment is mandatory per CLAUDE.md's pressure-release rule.
+- **TaskCreate/TaskUpdate cadence per major work phase** — created 5 tasks at round-open, updated through pending → in_progress → completed. Worked well for keeping the parallel streams (AST + parser + emit + tests + docs) coherent.
 
 ## Tactical Notes
 
-- Date: 2026-05-25.
+- Date: 2026-05-29.
 - `hello.lat` at repo root (untracked, one line: `dic "salve, munde".`) is the user's manual-test scratchpad.
-- Lexer keyword count: unchanged at 37 (R9 added no keywords; comments are punctuation/layout).
-- `.sentrux/rules.toml` exists and `check_rules` passes. Re-run after each round (cheap, free).
-- ARCHITECTURE §0 reading-order table now reaches Round 9 / §12.
-- v0.2 implementation rounds R10–R15 are sketched in `tasks/TODO.md` under `## v0.2 implementation plan`. Read it first when opening R10.
-- The `tasks/notes/` directory now exists (created when user landed `v0.2_loops_final_decisions.md`).
+- Lexer keyword count: unchanged at 37 (R11+R12 added no keywords; everything was already in R4's table).
+- `.sentrux/rules.toml` exists and `check_rules` passes (4/4 enforced under free tier).
+- ARCHITECTURE §0 reading-order table now reaches Round 11+12 / §14.
+- v0.2 implementation rounds remaining: R13 (`functio`), R14+R15 (`pro` + ranges + `nihil`).
+- `tasks/notes/v0.2_loops_final_decisions.md` (created 2026-05-25) still holds B/C/D rationales — refer to if R13 framing needs the type-system policy refresh.
 - `tasks/CONTINUITY.md` rewritten (not appended) per CLAUDE.md.
 - No new bugs this session; `tasks/BUGS.md` still empty.
-- No user corrections this session; `tasks/LESSONS.md` still empty.
+- No user corrections this session; `tasks/LESSONS.md` still empty. (The naming course-correct doesn't merit a lesson — it was caught immediately, no code churned.)
+- File-size status across modified prod files at close: ast.rs 275 prod LOC, parser/mod.rs 70 prod LOC, parser/grammar.rs 428 LOC, emit.rs 346 prod LOC — all under 500 target.
+- Pressure-release watch for R13: `parser/grammar.rs` at 428 LOC will likely cross 500 once `parse_function` (signature + params loop + type parsing + return-type optional + body) lands. Consider pre-emptive split into `parser/{statements,expressions,types}.rs` family during R13 framing.
 
 ## When You Resume
 
-If user opens with "let's frame R10" or similar:
+If user opens with "let's frame R13" or similar:
 
-1. Read `tasks/TODO.md` first (esp. `## v0.2 implementation plan` for round ordering + open R10/R11/R13/R14 sub-decisions).
-2. Read `tasks/notes/v0.2_loops_final_decisions.md` for B/C/D rationales.
-3. Read PRD §§4.11–4.12 (likely cold after compact).
-4. Run `sentrux session_start` to baseline before R10 code lands.
-5. Open the R10 framing — start with the 5-point slate in this doc's "What's Next" section. Block parsing is a small but pivotal round: parser gains its first v0.2 surface, AST gains `Block` (or similar) node, `ParseError` gains 1–3 new variants. Estimate ~30–50 new tests; ARCHITECTURE §13 to be written at close.
-6. Per CLAUDE.md round-closing protocol: cargo fmt + clippy + test --all; sentrux `session_start` / `session_end` bracket; ARCHITECTURE.md section drafted in conversation then committed; TODO.md round entry checked off + completion summary appended.
+1. Read `tasks/TODO.md` first (esp. `## v0.2 implementation plan` for round ordering + R13's open sub-decisions inline in its bullet).
+2. Read `tasks/notes/v0.2_loops_final_decisions.md` for B-3 (type pass-through + generics deferred) rationale.
+3. Read PRD §4.11.1 (function declaration spec) — likely cold after compact.
+4. Run `sentrux scan` then `session_start` to baseline before R13 code lands.
+5. Open the R13 framing — start with the 6-point slate in this doc's "What's Next" section. R13 is medium-sized: AST gains 2 new statement types (FunctionStmt + ReturnStmt) and one new struct (Param). Parser gains function-signature parsing + redde. Emit gains the type translation table (B-3). Estimate ~40-60 new tests; ARCHITECTURE §15 to be written at close.
+6. Number sub-decisions in any framing slate (proven this round to work well).
+7. Watch parser/grammar.rs LOC during R13 — pre-emptive split may be cleanest.
+8. Per CLAUDE.md round-closing protocol: cargo fmt + clippy + test --all; sentrux `session_start` / `session_end` bracket; ARCHITECTURE.md section drafted in conversation then committed; TODO.md round entry checked off + completion summary appended.
 
-If user opens with anything else, be flexible — R10 isn't urgent and the doc state is coherent enough to support a different direction (more lexicon polish, manual-testing the new comment syntax on real `.lat` code, R11+R12 framing skipping ahead, etc.).
+If user opens with anything else, be flexible — R13 isn't urgent and the doc state is fully coherent. Other plausible directions: manual-test the new operator + control-flow syntax via `hello.lat` and `marain run`, polish `docs/core-lexicon.md` to capture the R11+R12 operator landings, or skip ahead to R14+R15 framing.
