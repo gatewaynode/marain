@@ -21,6 +21,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 9 | §12 Line Comments | **Closed** |
 | 10 | §13 Block Parsing + `si` | **Closed** |
 | 11+12 | §14 Operator Expressions + Control Flow | **Closed** |
+| 13 | §15 Function Declarations + Calls | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -1192,3 +1193,326 @@ statements, expressions).
   variant names (`DivisusPer`, `MinorQuam`, etc.) are spelled at the lemma
   level — adding inflection metadata would parallel the existing carry-over
   α pattern on identifier nodes.
+
+## 15. Function Declarations + Calls
+
+Round 13. The parser learns `functio` declarations, `redde` returns, and
+function-call expressions; the emitter learns a two-pass module walk that
+hoists user-defined functions out of `fn main()`. R10's "lexer catches
+generics-attempts with `UnexpectedChar '<'`" gap closes here via a targeted
+`LexError::GenericsLookalike` variant. PRD §4.9's PascalCase-for-types rule
+becomes parse-enforced.
+
+### 15.1 Scope (v0.2)
+
+**In:**
+- `functio <name>(<params>) [dat <Tipus>] : <body>` declarations (PRD §4.11.1).
+- `redde [<expr>] .` returns. Bare `redde.` is a unit return (Rust `return;`).
+- `<name>(<args>)` call expressions in any expression position.
+- `<name>(<args>) .` calls at statement position (`Stmt::Call`).
+- Trailing commas in both param lists and call arg lists.
+- `Param { name: SigiledIdent, type_ref: TypeRef, span }`; `TypeRef`
+  newtype wrapping an `Ident` (reserves a generics-grow seam for v0.3+).
+- Type-translation table: `Sermo` → `String`, `Numerus` → `i64`; all other
+  PascalCase idents pass through verbatim (B-3 open pass-through).
+- PascalCase enforcement in type position via a new
+  `ParseError::TypePositionRequiresPascalCase` variant.
+- `LexError::GenericsLookalike { ch, span }` for `<` / `>` in source.
+- Two-pass emit: top-level `Stmt::Function`s emit above `fn main()`;
+  non-function statements land inside `fn main()`; `fn main()` is always
+  emitted (cargo requires it).
+
+**Out (deferred):** generics syntax (lex-rejected via the new variant);
+closures, lifetimes, where-clauses, visibility modifiers (PRD §4.11.6);
+trailing-expression returns (only explicit `redde` is supported); function
+values / first-class functions (callee must be a `PlainIdent`, not a
+sigiled var-ref).
+
+### 15.2 Decomposition
+
+```
+crates/marain-core/src/
+  ast.rs                   (modified)  + FunctionStmt, ReturnStmt, CallStmt,
+                                          CallExpr, Param, TypeRef; +Stmt
+                                          variants Function/Return/Call;
+                                          +Expr variant Call; test bloc
+                                          moved to sibling per pressure-release
+  ast_tests.rs             (new)       sibling test file for ast.rs
+  parser/
+    mod.rs                 (modified)  + `mod expressions;`
+    expressions.rs         (new)       parse_or..parse_primary cascade,
+                                          parse_call, make_binop — split out
+                                          of grammar.rs per locked C-1 when
+                                          grammar.rs crossed 500 LOC
+    grammar.rs             (modified)  + parse_function, parse_param_list,
+                                          parse_param, parse_type_ref,
+                                          parse_return, parse_call_stmt;
+                                          dispatch on Functio / Redde and
+                                          on PlainIdent+`(` at stmt position;
+                                          helpers `expect_kind` /
+                                          `expect_keyword` /
+                                          `parse_sigiled_ident` promoted to
+                                          `pub(super)` for expressions.rs
+    error.rs               (modified)  + TypePositionRequiresPascalCase
+  lexer/
+    mod.rs                 (modified)  + `<` / `>` dispatch arm → new
+                                          GenericsLookalike variant
+    error.rs               (modified)  + GenericsLookalike { ch, span }
+  emit.rs                  (modified)  two-pass emit; + emit_function,
+                                          emit_param, emit_type_ref,
+                                          emit_return, emit_call,
+                                          emit_call_stmt
+  emit_tests.rs            (modified)  +R13 emit tests
+  parser/mod_tests.rs      (modified)  +R13 parser tests + adjustment to
+                                          existing `unknown_statement_start`
+                                          test (`functio` is now parsed)
+```
+
+File-size status post-split: `ast.rs` 343 LOC ✓, `parser/grammar.rs` 357 ✓,
+`parser/expressions.rs` 269 ✓, `emit.rs` 454 ✓, all production-side files
+under target. Pressure-release status applies to test siblings only
+(`emit_tests.rs` 712, `parser/mod_tests.rs` 1213) and to `lexer/mod.rs`
+(665, mostly tests) — each carries the required module-doc justification.
+
+### 15.3 Decisions
+
+- **Two-pass module emit.** `emit()` walks `module.items` twice: pass 1
+  emits each `Stmt::Function` as a top-level Rust `fn`; pass 2 emits
+  everything else inside a `fn main() { ... }` wrapper. `fn main()` is
+  always emitted (cargo's binary-crate requirement). Top-level
+  non-function statements continue to land inside `fn main`, preserving
+  the v0.1 hello-world shape exactly. The partition is one explicit
+  `matches!` filter per pass — no flag, no Vec-of-functions intermediate.
+- **`Stmt::Call(CallStmt)` for side-effect statements.** A call at
+  statement position (`saluta().`) emits as `saluta();` — a Rust
+  expression-statement. The narrower `CallStmt` variant (over a generic
+  `ExprStmt`) reflects what's actually useful in v0.2: literals and var-refs
+  have no observable effect, so only calls earn statement-position
+  treatment. Surface widens to `ExprStmt` when/if a real use case appears.
+- **`TypeRef` is a newtype.** The single-field wrapper around `Ident` reads
+  more clearly than scattering `name: Ident` across consumers and reserves
+  the same Stage-2-extension shape that `Ident` / `SigiledIdent` already
+  use for inflection (α). v0.3+ generics will grow `TypeRef` with a
+  `params: Vec<TypeRef>` field; downstream code that destructures by
+  `.name` still works.
+- **Open type pass-through (B-3) lives in the emitter.** `emit_type_ref`
+  is a 2-arm match (`Sermo` → `String`, `Numerus` → `i64`, else verbatim)
+  — no lexer change, no parser table. A user-defined `Custom` type emits
+  as `Custom` and rustc adjudicates. Adding `structura` declarations later
+  populates the table without breaking pass-through consumers.
+- **PascalCase enforced at parse time (C-2).** PRD §4.9 commits to "hard
+  error, not a lint" on type-name casing. The lexer has no type-position
+  context, so the check happens in `parse_type_ref` — first char must be
+  ASCII-uppercase. New `ParseError::TypePositionRequiresPascalCase` carries
+  the offending name so the diagnostic can quote it.
+- **`redde` outside a function parses cleanly (C-4).** The parser doesn't
+  track function-nesting state; `redde 5.` at module level becomes a
+  `Stmt::Return` that lands inside `fn main()` at emit time. rustc rejects
+  the type mismatch (`fn main() -> ()` returning `i64`) with its own
+  error. Tracking nesting in a single-pass parser is the kind of
+  complexity Stage 1 doesn't want.
+- **`LexError::GenericsLookalike` reframes `ParseError::GenericsDeferred`.**
+  The framed parser variant would have been dead code: `<` is not in
+  Marain's lex alphabet, so the lexer fires `UnexpectedChar '<'` long
+  before any parser code runs. Catching `<` / `>` at the lex layer
+  reaches the user where their finger actually tripped and produces a
+  targeted "generics deferred to v0.3+ (PRD §4.11.6)" message instead of
+  the generic UnexpectedChar diagnostic.
+- **`parse_call` returns `CallExpr`; `parse_call_stmt` wraps it.** The
+  expression-side `parse_call` (in `expressions.rs`) is the canonical
+  argument-list parser; `parse_call_stmt` (in `grammar.rs`) just calls
+  it and expects a trailing period. No code duplication; trailing-comma
+  logic lives in one place.
+- **Callee disambiguation in `parse_primary`.** A `PlainIdent` followed
+  by `(` is a call; a `PlainIdent` without `(` is `ExpectedExpression`
+  (per PRD §4.5 variables always carry a sigil, so bare unsigiled idents
+  can never be variable references). One-token lookahead via the existing
+  `Parser::peek_kind_at`.
+- **Trailing commas accepted in both lists.** `(^x: Sermo, ^y: Numerus,)`
+  and `add(1, 2,)` both parse. Diff-friendly, no surface cost.
+- **`expressions.rs` split per locked C-1.** R13 pushed `grammar.rs` past
+  500 LOC. Split made: expression cascade + `parse_call` + `make_binop`
+  → `parser/expressions.rs` (269 LOC); statement productions stay in
+  `grammar.rs` (357 LOC). Cross-cutting helpers (`expect_kind`,
+  `expect_keyword`, `parse_sigiled_ident`) promoted to `pub(super)`.
+- **`ast.rs` test bloc split per CLAUDE.md sibling-file rule.** R13
+  AST growth crossed 500 LOC with tests dominating. Tests moved to
+  `ast_tests.rs` via `#[cfg(test)] #[path = "ast_tests.rs"] mod tests;`
+  — same pattern R11+R12 used on `parser/mod.rs` and `emit.rs`.
+
+### 15.4 New AST shape
+
+```rust
+pub enum Stmt {
+    Let(LetStmt),
+    MacroCall(MacroCallStmt),
+    If(IfStmt),
+    While(WhileStmt),
+    Loop(LoopStmt),
+    Break(BreakStmt),
+    Continue(ContinueStmt),
+    Function(FunctionStmt),   // new
+    Return(ReturnStmt),       // new
+    Call(CallStmt),           // new — side-effect call as statement
+}
+
+pub struct FunctionStmt {
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeRef>,  // None when `dat` omitted
+    pub body: Block,
+    pub span: Span,
+}
+
+pub struct Param {
+    pub name: SigiledIdent,
+    pub type_ref: TypeRef,
+    pub span: Span,
+}
+
+pub struct TypeRef {
+    pub name: Ident,
+    pub span: Span,
+}
+
+pub struct ReturnStmt {
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+pub struct CallStmt {
+    pub call: CallExpr,
+    pub span: Span,
+}
+
+pub enum Expr {
+    StringLit(StringLit),
+    IntegerLit(IntegerLit),
+    BoolLit(BoolLit),
+    VarRef(SigiledIdent),
+    BinOp(BinOpExpr),
+    UnaryOp(UnaryOpExpr),
+    Call(CallExpr),           // new
+}
+
+pub struct CallExpr {
+    pub callee: Ident,
+    pub args: Vec<Expr>,
+    pub span: Span,
+}
+```
+
+Carry-over α (inflection slot, R5 §7.5) untouched on the new nodes —
+`Param`'s `name` is a `SigiledIdent` which already carries the slot;
+`TypeRef`'s `name` is an `Ident` which carries it too; `CallExpr`'s
+`callee` is an `Ident` (no sigil; Stage 1 function calls use bare
+PlainIdents).
+
+### 15.5 Test coverage
+
+- **`ast.rs` / `ast_tests.rs`** — +5 new tests covering `FunctionStmt`,
+  `ReturnStmt`, `CallExpr`, `CallStmt`, `Param`, and `TypeRef` span
+  dispatch and field round-trips.
+- **`parser/error.rs`** — +1 test for the new
+  `TypePositionRequiresPascalCase` variant's message format.
+- **`parser/mod_tests.rs`** — +30 tests: function declarations
+  (zero-arg / single-arg / multi-arg / trailing comma / mutable param /
+  unknown-type pass-through); returns (with value / bare unit / outside
+  function); calls (zero-arg / multi-arg / trailing comma / nested /
+  as dic-arg / with binop arg); error paths (missing parens / name /
+  colon / return-type-after-`dat` / PascalCase in both param and return
+  type / missing colon in param / generics-lookalike via lex layer /
+  missing period after redde / bare PlainIdent as expression / call as
+  statement / call-stmt missing period); round-trip integration.
+- **`lexer/error.rs`** — +1 test that `GenericsLookalike`'s message
+  mentions "generics", "v0.3", and the `minor quam` / `maior quam`
+  alternatives.
+- **`lexer/mod.rs`** — +3 tests: `<` produces `GenericsLookalike`, `>`
+  too, message mentions deferral.
+- **`emit_tests.rs`** — +18 tests covering top-level partition, fn-main
+  synthesis when no top-level non-function stmts exist, type translation
+  (`Sermo` → `String`, `Numerus` → `i64`, `Custom` passes through), mut
+  param emits `mut`, multi-param comma-separation, bare/value returns,
+  call-stmt with trailing semicolon, call-with-args, call-with-binop-arg
+  preserves paren-wrap, nested calls, full round-trip (function declared
+  + called from main + value used), top-level `redde` inside `fn main`
+  for rustc to reject, trailing commas in both lists.
+- **Goldens** — 5 new emit fixtures (`18_functio_unit`, `19_functio_typed`,
+  `20_functio_multi_param`, `21_functio_call`, `22_functio_translation`)
+  and 3 new error fixtures (`errors/11_generics_lookalike`,
+  `errors/12_type_pascal_case`, `errors/13_missing_return_type`).
+- **Adjustment** — pre-existing `unknown_statement_start_is_error` test
+  pointed at `functio foo.` which is now a parseable (though invalid)
+  function declaration. Updated to use `est foo.` (the `est` keyword
+  has no statement-position dispatch).
+
+**Test count delta: +61.** Workspace total at R13 close: **415** (was 354
+at R11+R12 close). `cargo fmt --check`, `cargo clippy --all-targets -D
+warnings`, `cargo test --all` all clean.
+
+### 15.6 Sentrux signal at R13 close
+
+`session_start` taken before any code change (signal 7059); `session_end`
+after the round + the two file splits: `signal_delta` +14
+(7059 → 7073), `cycles_change` 0, `coupling_change` 0.0, DSM
+`above_diagonal` stays 0 (clean layering preserved), 0 rule violations.
+The signal improvement (vs R11+R12's −85) tracks the file splits reducing
+per-file complexity even as new functionality landed.
+
+### 15.7 Pressure-release tier 1 invoked (two splits)
+
+R13 is the first round to trip the 500-LOC threshold on production-side
+files. Two splits made:
+
+- **`ast.rs` test sibling split.** Pre-R13: 487 LOC; post-R13 growth: 646
+  LOC with test bloc dominating. Per CLAUDE.md sibling-file rule, tests
+  moved to `crates/marain-core/src/ast_tests.rs` via
+  `#[cfg(test)] #[path = "ast_tests.rs"] mod tests;`. Same pattern R11+R12
+  used. ast.rs now 343 LOC, ast_tests.rs 308 LOC; both under target.
+- **`parser/grammar.rs` production-side split.** Pre-R13: 428 LOC;
+  post-R13 growth: 601 LOC with new statement productions (`parse_function`,
+  `parse_param_list`, `parse_param`, `parse_type_ref`, `parse_return`,
+  `parse_call_stmt`). Per locked decision C-1 ("split iff it crosses the
+  threshold"), the expression cascade (`parse_or` through `parse_primary`,
+  plus `parse_call` and `make_binop`) extracted to
+  `crates/marain-core/src/parser/expressions.rs`. Cross-cutting helpers
+  (`expect_kind`, `expect_keyword`, `parse_sigiled_ident`) promoted to
+  `pub(super)` so expressions.rs can call them. grammar.rs now 357 LOC,
+  expressions.rs 269 LOC; both under target.
+
+Test-file pressure-release status (per the existing R11+R12 pattern)
+applies to `emit_tests.rs` (712 LOC, was 555), `parser/mod_tests.rs`
+(1213 LOC, was 832), and now `lexer/mod.rs` (665 LOC, mostly driver tests
+that share an in-scope helper set). All three carry updated module-doc
+justifications per CLAUDE.md.
+
+### 15.8 Forward hooks
+
+- **`pro` + range tokens (R14+R15).** Function bodies are now first-class
+  block contexts, so `pro <binding> in <iterable> :` slots into the same
+  parse_block mechanism. New lexer tokens `DotDot` / `DotDotEq` arrive in
+  R14.
+- **`nihil.` (R14+R15).** Per PRD §4.11.4. `parse_block` is already
+  compatible: `nihil.` is a real statement that produces an Indent-then-
+  Nihil-then-Dedent stream the existing loop handles.
+- **`structura` / `enumeratio` (R16+).** When these land, `TypeRef`'s
+  forward seam pays off: user-defined types pass through verbatim today
+  and become real Rust struct/enum names when the parser learns those
+  forms. The `emit_type_ref` translation table adds entries as needed; no
+  table-fork required.
+- **Generics activation (v0.3+).** The `LexError::GenericsLookalike`
+  variant retires the moment generic syntax becomes legal — lexer arm
+  changes from "return error" to "emit `<` token", parser arm in
+  `parse_type_ref` consumes `<T, U>` into `TypeRef.params`. The Stage 1
+  shape is forward-compatible.
+- **Labeled `break 'name` / `continue 'name` and `break <expr>`.** Still
+  deferred per R12 sub-decision #7. Function bodies don't change the
+  calculus.
+- **Trailing-expression returns.** Rust supports `fn foo() -> i32 { 42 }`
+  with no explicit `return`. Marain's period-terminator design (§4.8)
+  makes the surface awkward (would need an "expression-statement at
+  block tail position" rule); deferred indefinitely unless a real use
+  case appears.
+- **Closures.** Deferred per PRD §4.11.6. When they land, `Expr::Call`
+  generalizes — callee becomes an `Expr` rather than an `Ident`. The
+  `args: Vec<Expr>` field is already shaped to absorb the change.

@@ -1,7 +1,8 @@
-//! 555 LOC, exceeds 500 target: sibling test file for `emit.rs`. Tests share
+//! 712 LOC, exceeds 500 target: sibling test file for `emit.rs`. Tests share
 //! the `parse_and_emit` / `parse_and_emit_err` helpers and exhaustively cover
 //! every emit arm (skeleton, R5 productions, Rust-keyword escape, R10 `if`,
-//! R11 ops + boolean, R12 control flow). One file, one helper set.
+//! R11 ops + boolean, R12 control flow, R13 functio/redde/calls). One file,
+//! one helper set; splitting by R-round would force helper chasing.
 
 use std::path::PathBuf;
 
@@ -551,4 +552,162 @@ fn break_at_top_level_emits_break_semicolon() {
     let out = parse_and_emit("semper :\n    interrumpe.\n    continua.\n");
     assert!(out.contains("        break;\n"));
     assert!(out.contains("        continue;\n"));
+}
+
+// ─── R13: function declarations, returns, calls ────────────────────────
+
+#[test]
+fn functio_unit_return_emits_top_level_fn_and_empty_main() {
+    let out = parse_and_emit("functio saluta() :\n    dic \"hi\".\n");
+    let expected = "\
+fn saluta() {
+    println!(\"{}\", \"hi\");
+}
+
+fn main() {
+}
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn functio_typed_signature_translates_sermo_to_string() {
+    let out = parse_and_emit("functio echo(^x: Sermo) dat Sermo :\n    redde ^x.\n");
+    assert!(out.contains("fn echo(x: String) -> String {"));
+    assert!(out.contains("return x;"));
+}
+
+#[test]
+fn functio_numerus_translates_to_i64() {
+    let out = parse_and_emit("functio f(^n: Numerus) dat Numerus :\n    redde ^n.\n");
+    assert!(out.contains("fn f(n: i64) -> i64 {"));
+}
+
+#[test]
+fn functio_unknown_type_passes_through_verbatim() {
+    let out = parse_and_emit("functio f(^x: Custom) dat Custom :\n    redde ^x.\n");
+    assert!(out.contains("fn f(x: Custom) -> Custom {"));
+}
+
+#[test]
+fn functio_mutable_param_emits_mut() {
+    let out = parse_and_emit("functio bump(@n: Numerus) :\n    dic \"ok\".\n");
+    assert!(out.contains("fn bump(mut n: i64) {"));
+}
+
+#[test]
+fn functio_multi_param_emits_comma_separated() {
+    let out =
+        parse_and_emit("functio add(^a: Numerus, ^b: Numerus) dat Numerus :\n    redde ^a.\n");
+    assert!(out.contains("fn add(a: i64, b: i64) -> i64 {"));
+}
+
+#[test]
+fn redde_bare_emits_return_semicolon() {
+    let out = parse_and_emit("functio f() :\n    redde.\n");
+    assert!(out.contains("return;"));
+}
+
+#[test]
+fn redde_with_value_emits_return_expr() {
+    let out = parse_and_emit("functio f() dat Numerus :\n    redde 42.\n");
+    assert!(out.contains("return 42i64;"));
+}
+
+#[test]
+fn call_zero_args_emits_bare_call() {
+    let out = parse_and_emit("functio greet() :\n    dic \"hi\".\nsit ^x est greet().\n");
+    assert!(out.contains("let x = greet();"));
+}
+
+#[test]
+fn call_with_args_emits_comma_separated() {
+    let out = parse_and_emit(
+        "functio add(^a: Numerus, ^b: Numerus) dat Numerus :\n    redde ^a.\nsit ^r est add(1, 2).\n",
+    );
+    assert!(out.contains("let r = add(1i64, 2i64);"));
+}
+
+#[test]
+fn call_with_binop_arg_preserves_paren_wrap() {
+    let out = parse_and_emit("functio f(^x: Numerus) :\n    dic \"x\".\nsit ^r est f(1 plus 2).\n");
+    assert!(out.contains("let r = f((1i64 + 2i64));"));
+}
+
+#[test]
+fn nested_call_emits_nested_parens() {
+    let out = parse_and_emit("sit ^x est f(g(1)).\n");
+    assert!(out.contains("let x = f(g(1i64));"));
+}
+
+#[test]
+fn module_with_only_function_still_emits_empty_main() {
+    let out = parse_and_emit("functio f() :\n    dic \"hi\".\n");
+    assert!(out.contains("fn f() {"));
+    assert!(out.contains("fn main() {\n}\n"));
+}
+
+#[test]
+fn function_then_top_level_stmt_partitions_correctly() {
+    // Function above fn main; non-function statement inside fn main.
+    let out = parse_and_emit("functio greet() :\n    dic \"hi\".\nsit ^x est 5.\n");
+    let expected = "\
+fn greet() {
+    println!(\"{}\", \"hi\");
+}
+
+fn main() {
+    let x = 5i64;
+}
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn function_declared_then_called_round_trip() {
+    let out = parse_and_emit(
+        "functio answer() dat Numerus :\n    redde 42.\nsit ^x est answer().\ndic ^x.\n",
+    );
+    let expected = "\
+fn answer() -> i64 {
+    return 42i64;
+}
+
+fn main() {
+    let x = answer();
+    println!(\"{}\", x);
+}
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn redde_at_top_level_emits_inside_main_for_rustc_to_reject() {
+    // C-4: parser accepts; emit lands inside fn main; rustc rejects.
+    let out = parse_and_emit("redde 5.\n");
+    assert!(out.contains("fn main() {\n    return 5i64;\n}\n"));
+}
+
+#[test]
+fn call_trailing_comma_emits_no_extra_comma() {
+    let out = parse_and_emit("sit ^x est add(1, 2,).\n");
+    assert!(out.contains("let x = add(1i64, 2i64);"));
+}
+
+#[test]
+fn param_trailing_comma_emits_no_extra_comma() {
+    let out = parse_and_emit("functio f(^x: Sermo,) :\n    dic \"x\".\n");
+    assert!(out.contains("fn f(x: String) {"));
+}
+
+#[test]
+fn call_stmt_emits_with_trailing_semicolon() {
+    let out = parse_and_emit("functio saluta() :\n    dic \"hi\".\nsaluta().\n");
+    assert!(out.contains("    saluta();"));
+}
+
+#[test]
+fn call_stmt_with_args_emits_correctly() {
+    let out = parse_and_emit("functio p(^x: Numerus, ^y: Numerus) :\n    dic \"x\".\np(1, 2).\n");
+    assert!(out.contains("    p(1i64, 2i64);"));
 }

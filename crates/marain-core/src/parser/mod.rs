@@ -4,6 +4,7 @@
 //! Per-production grammar functions live in [`grammar`].
 
 mod error;
+mod expressions;
 mod grammar;
 
 pub use error::ParseError;

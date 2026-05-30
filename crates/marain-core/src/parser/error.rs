@@ -18,6 +18,9 @@ pub enum ParseError {
     ExpectedExpression { found: TokenKind, span: Span },
     /// A statement was expected but its first token matches no statement form.
     UnknownStatementStart { found: TokenKind, span: Span },
+    /// A type-position identifier did not start with an uppercase letter
+    /// (PRD §4.9: types use PascalCase; mismatch is a hard error, not a lint).
+    TypePositionRequiresPascalCase { name: String, span: Span },
 }
 
 impl ParseError {
@@ -25,7 +28,8 @@ impl ParseError {
         match self {
             Self::UnexpectedToken { span, .. }
             | Self::ExpectedExpression { span, .. }
-            | Self::UnknownStatementStart { span, .. } => *span,
+            | Self::UnknownStatementStart { span, .. }
+            | Self::TypePositionRequiresPascalCase { span, .. } => *span,
         }
     }
 
@@ -39,6 +43,9 @@ impl ParseError {
             }
             Self::UnknownStatementStart { found, .. } => {
                 format!("statement cannot begin with {found}")
+            }
+            Self::TypePositionRequiresPascalCase { name, .. } => {
+                format!("type names must use PascalCase; got `{name}` (PRD §4.9)")
             }
         }
     }
@@ -97,6 +104,18 @@ mod tests {
             span: sp(),
         };
         assert!(e.message().contains("statement cannot begin"));
+    }
+
+    #[test]
+    fn type_position_requires_pascal_case_message() {
+        let e = ParseError::TypePositionRequiresPascalCase {
+            name: "sermo".to_string(),
+            span: sp(),
+        };
+        let msg = e.message();
+        assert!(msg.contains("PascalCase"), "msg: {msg}");
+        assert!(msg.contains("sermo"), "msg should quote name: {msg}");
+        assert!(msg.contains("PRD §4.9"), "msg should cite PRD: {msg}");
     }
 
     #[test]

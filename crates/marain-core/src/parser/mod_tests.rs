@@ -1,7 +1,8 @@
-//! 832 LOC, exceeds 500 target: sibling test file for `parser/mod.rs`. All
+//! 1213 LOC, exceeds 500 target: sibling test file for `parser/mod.rs`. All
 //! tests share the `parse_ok` / `parse_err` helpers and exercise one cohesive
-//! surface (the parser driver + grammar productions). Splitting by R-round
-//! would force callers to chase shared helpers across files for no gain.
+//! surface (the parser driver + grammar + expression productions). Splitting
+//! by R-round would force callers to chase shared helpers across files for
+//! no gain.
 
 use std::path::PathBuf;
 
@@ -163,7 +164,10 @@ fn sit_without_sigil_is_error() {
 
 #[test]
 fn unknown_statement_start_is_error() {
-    let e = parse_err("functio foo.\n");
+    // `est` is a keyword but never legal at statement start (it's the
+    // initializer in `sit ^x est <expr>`); a bare leading `est` trips the
+    // dispatch's catch-all.
+    let e = parse_err("est foo.\n");
     assert!(
         matches!(e, ParseError::UnknownStatementStart { .. }),
         "got {e:?}",
@@ -833,4 +837,378 @@ fn cond_with_binop_in_si() {
         },
         other => panic!("expected If, got {other:?}"),
     }
+}
+
+// ─── R13: function declarations, returns, calls ────────────────────────
+
+#[test]
+fn functio_zero_arg_unit_return() {
+    let m = parse_ok("functio saluta() :\n    dic \"hi\".\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.name.name, "saluta");
+            assert!(f.params.is_empty());
+            assert!(f.return_type.is_none());
+            assert_eq!(f.body.stmts.len(), 1);
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_single_param_with_dat_return() {
+    let m = parse_ok("functio echo(^x: Sermo) dat Sermo :\n    redde ^x.\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.name.name, "echo");
+            assert_eq!(f.params.len(), 1);
+            assert_eq!(f.params[0].name.name, "x");
+            assert_eq!(f.params[0].name.sigil, Sigil::Immutable);
+            assert_eq!(f.params[0].type_ref.name.name, "Sermo");
+            assert!(f.return_type.is_some());
+            assert_eq!(f.return_type.as_ref().unwrap().name.name, "Sermo");
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_multi_param() {
+    let m = parse_ok("functio add(^a: Numerus, ^b: Numerus) dat Numerus :\n    redde ^a.\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.params.len(), 2);
+            assert_eq!(f.params[0].name.name, "a");
+            assert_eq!(f.params[1].name.name, "b");
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_trailing_comma_in_param_list() {
+    let m = parse_ok("functio foo(^x: Sermo,) :\n    dic \"x\".\n");
+    match &m.items[0] {
+        Stmt::Function(f) => assert_eq!(f.params.len(), 1),
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_mutable_param_keeps_sigil_in_ast() {
+    let m = parse_ok("functio bump(@x: Numerus) :\n    dic \"ok\".\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.params[0].name.sigil, Sigil::Mutable);
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_unknown_type_passes_through() {
+    // B-3: open pass-through. `Custom` is not in the translation table.
+    let m = parse_ok("functio f(^x: Custom) dat Custom :\n    dic \"x\".\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.params[0].type_ref.name.name, "Custom");
+            assert_eq!(f.return_type.as_ref().unwrap().name.name, "Custom");
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn redde_with_value() {
+    let m = parse_ok("functio f() dat Numerus :\n    redde 42.\n");
+    match &m.items[0] {
+        Stmt::Function(f) => match &f.body.stmts[0] {
+            Stmt::Return(r) => {
+                assert!(r.value.is_some());
+                match r.value.as_ref().unwrap() {
+                    Expr::IntegerLit(i) => assert_eq!(i.value, 42),
+                    other => panic!("expected IntegerLit, got {other:?}"),
+                }
+            }
+            other => panic!("expected Return, got {other:?}"),
+        },
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn redde_bare_unit() {
+    let m = parse_ok("functio f() :\n    redde.\n");
+    match &m.items[0] {
+        Stmt::Function(f) => match &f.body.stmts[0] {
+            Stmt::Return(r) => assert!(r.value.is_none()),
+            other => panic!("expected Return, got {other:?}"),
+        },
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn redde_outside_function_parses_cleanly() {
+    // C-4: parser doesn't track function scope; rustc adjudicates.
+    let m = parse_ok("redde 5.\n");
+    match &m.items[0] {
+        Stmt::Return(r) => assert!(r.value.is_some()),
+        other => panic!("expected Return at top level, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_zero_args() {
+    let m = parse_ok("sit ^x est saluta().\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Call(c) => {
+                assert_eq!(c.callee.name, "saluta");
+                assert!(c.args.is_empty());
+            }
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_with_args() {
+    let m = parse_ok("sit ^x est add(1, 2).\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Call(c) => {
+                assert_eq!(c.args.len(), 2);
+            }
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_with_trailing_comma() {
+    let m = parse_ok("sit ^x est add(1, 2,).\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Call(c) => assert_eq!(c.args.len(), 2),
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_as_dic_arg() {
+    // Use a non-keyword callee — keywords like `forma` can only appear in
+    // their reserved statement position (no-punct macro head).
+    let m = parse_ok("dic helper(\"x\").\n");
+    match &m.items[0] {
+        Stmt::MacroCall(mc) => match &mc.arg {
+            Expr::Call(c) => assert_eq!(c.callee.name, "helper"),
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected MacroCall, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_with_binop_arg() {
+    let m = parse_ok("sit ^x est f(1 plus 2).\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Call(c) => match &c.args[0] {
+                Expr::BinOp(b) => assert_eq!(b.op, BinOp::Plus),
+                other => panic!("expected BinOp arg, got {other:?}"),
+            },
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn nested_call() {
+    let m = parse_ok("sit ^x est f(g(1), h()).\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Call(c) => {
+                assert_eq!(c.callee.name, "f");
+                assert_eq!(c.args.len(), 2);
+            }
+            other => panic!("expected Call, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn function_then_main_stmt_at_module_level() {
+    let m = parse_ok("functio greet() :\n    dic \"salve\".\nsit ^x est 5.\ndic \"done\".\n");
+    assert_eq!(m.items.len(), 3);
+    assert!(matches!(m.items[0], Stmt::Function(_)));
+    assert!(matches!(m.items[1], Stmt::Let(_)));
+    assert!(matches!(m.items[2], Stmt::MacroCall(_)));
+}
+
+// ─── R13: error paths ─────────────────────────────────────────────────
+
+#[test]
+fn functio_missing_parens_is_error() {
+    let e = parse_err("functio foo :\n    dic \"x\".\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`(`"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_missing_name_is_error() {
+    let e = parse_err("functio () :\n    dic \"x\".\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(
+                expected.contains("function name"),
+                "expected label was {expected:?}"
+            );
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_missing_colon_after_signature_is_error() {
+    let e = parse_err("functio foo()\n    dic \"x\".\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`:`"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn functio_missing_return_type_after_dat_is_error() {
+    let e = parse_err("functio foo() dat :\n    dic \"x\".\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(
+                expected.contains("type name"),
+                "expected label was {expected:?}"
+            );
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn lowercase_type_position_is_pascal_case_error() {
+    let e = parse_err("functio f(^x: sermo) :\n    dic \"x\".\n");
+    match e {
+        ParseError::TypePositionRequiresPascalCase { name, .. } => {
+            assert_eq!(name, "sermo");
+        }
+        other => panic!("expected TypePositionRequiresPascalCase, got {other:?}"),
+    }
+}
+
+#[test]
+fn return_type_lowercase_is_pascal_case_error() {
+    let e = parse_err("functio f() dat numerus :\n    dic \"x\".\n");
+    match e {
+        ParseError::TypePositionRequiresPascalCase { name, .. } => {
+            assert_eq!(name, "numerus");
+        }
+        other => panic!("expected TypePositionRequiresPascalCase, got {other:?}"),
+    }
+}
+
+#[test]
+fn param_missing_colon_is_error() {
+    let e = parse_err("functio f(^x Sermo) :\n    dic \"x\".\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`:`"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn generics_attempt_is_lex_lookalike_error() {
+    // Reaches the parser layer through MarainError::Lex; verifies that the
+    // lexer's GenericsLookalike fires before any parser code can run.
+    let mut map = SourceMap::new();
+    let id = map.add(
+        PathBuf::from("test.lat"),
+        "functio f() dat Agmen<T> :\n    dic \"x\".\n".to_string(),
+    );
+    let err = lex(map.get(id)).expect_err("expected lex to fail");
+    assert!(matches!(
+        err,
+        crate::lexer::LexError::GenericsLookalike { ch: '<', .. }
+    ));
+}
+
+#[test]
+fn redde_missing_period_is_error() {
+    let e = parse_err("functio f() :\n    redde 5\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`.`"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn bare_plain_ident_in_expr_position_is_error() {
+    // A PlainIdent without `(` is not a valid expression — variables must
+    // carry a sigil per PRD §4.5.
+    let e = parse_err("sit ^x est foo.\n");
+    match e {
+        ParseError::ExpectedExpression { .. } => {}
+        other => panic!("expected ExpectedExpression, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_as_statement_parses() {
+    let m = parse_ok("saluta().\n");
+    assert!(matches!(m.items[0], Stmt::Call(_)));
+}
+
+#[test]
+fn call_stmt_with_args_parses() {
+    let m = parse_ok("print(\"x\", 5).\n");
+    match &m.items[0] {
+        Stmt::Call(cs) => {
+            assert_eq!(cs.call.callee.name, "print");
+            assert_eq!(cs.call.args.len(), 2);
+        }
+        other => panic!("expected Call, got {other:?}"),
+    }
+}
+
+#[test]
+fn call_stmt_missing_period_is_error() {
+    let e = parse_err("saluta()\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`.`"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn function_call_returns_value_to_let_binding() {
+    // Round-trip integration: declaring + calling in one source.
+    let m = parse_ok("functio answer() dat Numerus :\n    redde 42.\nsit ^x est answer().\n");
+    assert_eq!(m.items.len(), 2);
+    assert!(matches!(m.items[0], Stmt::Function(_)));
+    assert!(matches!(m.items[1], Stmt::Let(_)));
 }

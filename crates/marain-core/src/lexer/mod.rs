@@ -1,5 +1,13 @@
 //! Lexer driver: orchestrates per-token scanners and the indent state
 //! machine into a complete token stream ending in EOF.
+//!
+//! 665 LOC, exceeds 500 target: ~225 LOC executable plus ~440 LOC of driver
+//! integration tests that exercise the full lex pipeline (indent / brackets /
+//! sigils / keywords / strings / numbers / line comments / `<>` lookalike).
+//! The tests share an in-scope `lex_str` / `lex_err` setup and want to live
+//! near the dispatcher they exercise; per CLAUDE.md the sibling-file split
+//! is the obvious decomposition if pressure rises further, but at 665 LOC
+//! the single-file shape still reads more cleanly than a split would.
 
 mod comments;
 mod cursor;
@@ -214,6 +222,14 @@ pub fn lex(file: &SourceFile) -> Result<Vec<Token>, LexError> {
                 cursor.advance();
                 indent.exit_bracket();
                 Token::new(TokenKind::RBrace, Span::new(start, cursor.pos(), file_id))
+            }
+            b'<' | b'>' => {
+                let ch = b as char;
+                cursor.advance();
+                return Err(LexError::GenericsLookalike {
+                    ch,
+                    span: Span::new(start, cursor.pos(), file_id),
+                });
             }
             other => {
                 let ch = other as char;
@@ -608,6 +624,41 @@ mod tests {
         assert!(
             msg.contains("reserved"),
             "message should call out reserved status; got: {msg}",
+        );
+    }
+
+    #[test]
+    fn open_angle_is_generics_lookalike() {
+        let err = lex_err("dat Agmen<T>.\n");
+        match err {
+            LexError::GenericsLookalike { ch, span } => {
+                assert_eq!(ch, '<');
+                assert_eq!(span.end - span.start, 1);
+            }
+            other => panic!("expected GenericsLookalike, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn close_angle_is_generics_lookalike() {
+        let err = lex_err("functio foo() dat Sermo>.\n");
+        match err {
+            LexError::GenericsLookalike { ch, .. } => assert_eq!(ch, '>'),
+            other => panic!("expected GenericsLookalike, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generics_lookalike_message_mentions_generics_and_alternative() {
+        let err = lex_err("dat Agmen<T>.\n");
+        let msg = err.message();
+        assert!(
+            msg.contains("generics"),
+            "message should mention generics; got: {msg}"
+        );
+        assert!(
+            msg.contains("v0.3"),
+            "message should cite v0.3 deferral; got: {msg}"
         );
     }
 

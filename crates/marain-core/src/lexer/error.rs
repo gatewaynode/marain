@@ -25,6 +25,13 @@ pub enum LexError {
     /// reserved syntax in v0.2 (PRD §4.12) and deferred to v0.3+; the
     /// dedicated variant lets the diagnostic point the user at `//`.
     BlockCommentsDeferred { span: Span },
+    /// A `<` or `>` byte was encountered. Marain has no use for these
+    /// characters (comparisons are `minor quam` / `maior quam` per PRD §4.4),
+    /// so their most likely origin is a generics-syntax attempt like
+    /// `Agmen<T>`. Generics are deferred to v0.3+ per PRD §4.11.6; the
+    /// dedicated variant lets the diagnostic say so directly rather than
+    /// the generic "unexpected character" path.
+    GenericsLookalike { ch: char, span: Span },
 }
 
 impl LexError {
@@ -37,7 +44,8 @@ impl LexError {
             | Self::InconsistentIndent { span }
             | Self::SigilWithoutIdent { span, .. }
             | Self::InvalidInteger { span, .. }
-            | Self::BlockCommentsDeferred { span } => *span,
+            | Self::BlockCommentsDeferred { span }
+            | Self::GenericsLookalike { span, .. } => *span,
         }
     }
 
@@ -60,6 +68,9 @@ impl LexError {
                 "block comments are reserved syntax; use // for a line comment (PRD §4.12)"
                     .to_string()
             }
+            Self::GenericsLookalike { ch, .. } => format!(
+                "unexpected '{ch}'; generics are deferred to v0.3+ (PRD §4.11.6) and comparisons use `minor quam` / `maior quam` (PRD §4.4)"
+            ),
         }
     }
 
@@ -122,6 +133,24 @@ mod tests {
     fn display_renders_message() {
         let e = LexError::UnterminatedString { span: s() };
         assert_eq!(e.to_string(), "unterminated string literal");
+    }
+
+    #[test]
+    fn generics_lookalike_message_mentions_generics_and_alternative() {
+        let e = LexError::GenericsLookalike { ch: '<', span: s() };
+        let msg = e.message();
+        assert!(
+            msg.contains("generics"),
+            "message should call out generics; got: {msg}",
+        );
+        assert!(
+            msg.contains("v0.3"),
+            "message should cite v0.3 deferral; got: {msg}",
+        );
+        assert!(
+            msg.contains("minor quam") || msg.contains("maior quam"),
+            "message should point at comparison alternatives; got: {msg}",
+        );
     }
 
     #[test]

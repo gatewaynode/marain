@@ -1,17 +1,17 @@
-//! Per-production grammar functions.
+//! Statement-level grammar productions plus the cross-cutting helpers
+//! (`expect_kind`, `expect_keyword`, `parse_plain_ident`,
+//! `parse_sigiled_ident`) used by both the statement and expression layers.
+//!
+//! Expression-level productions (the precedence cascade, `parse_call`,
+//! `make_binop`) live in [`crate::parser::expressions`] — split out per the
+//! C-1 pressure-release rule when R13 pushed this file across 500 LOC.
 //!
 //! Hand-rolled recursive descent over a flat token slice. Stage 1 has fixed
-//! word order (PRD §4.2). Expression-level operators (R11+R12) use precedence
-//! climbing through a cascade of `parse_<level>` functions; the cascade order
-//! mirrors Rust's precedence table (PRD §4.4) so `a plus b per c` parses as
-//! `a plus (b per c)`. Multi-word phrases (`maior quam`, `minor vel par`,
-//! `divisus per`, `non aequat`) are recognized greedily at the parser level —
-//! the lexer emits one token per word per PRD §4.4.
+//! word order (PRD §4.2).
 
 use crate::ast::{
-    BinOp, BinOpExpr, Block, BoolLit, BreakStmt, ContinueStmt, ElseBranch, Expr, Ident, IfStmt,
-    IntegerLit, LetStmt, LoopStmt, MacroCallStmt, Module, SigiledIdent, Stmt, StringLit, UnaryOp,
-    UnaryOpExpr, WhileStmt,
+    Block, BreakStmt, CallStmt, ContinueStmt, ElseBranch, FunctionStmt, Ident, IfStmt, LetStmt,
+    LoopStmt, MacroCallStmt, Module, Param, ReturnStmt, SigiledIdent, Stmt, TypeRef, WhileStmt,
 };
 use crate::lexer::keywords::Keyword;
 use crate::span::Span;
@@ -19,6 +19,7 @@ use crate::token::TokenKind;
 
 use super::Parser;
 use super::error::ParseError;
+use super::expressions::{parse_call, parse_expr};
 
 pub(super) fn parse_module(p: &mut Parser) -> Result<Module, ParseError> {
     let start = p.peek_span();
@@ -41,7 +42,15 @@ fn parse_stmt(p: &mut Parser) -> Result<Stmt, ParseError> {
         TokenKind::Keyword(Keyword::Semper) => parse_loop(p).map(Stmt::Loop),
         TokenKind::Keyword(Keyword::Interrumpe) => parse_break(p).map(Stmt::Break),
         TokenKind::Keyword(Keyword::Continua) => parse_continue(p).map(Stmt::Continue),
+        TokenKind::Keyword(Keyword::Functio) => parse_function(p).map(Stmt::Function),
+        TokenKind::Keyword(Keyword::Redde) => parse_return(p).map(Stmt::Return),
         TokenKind::Keyword(k) if is_no_punct_macro(*k) => parse_macro_call(p).map(Stmt::MacroCall),
+        // `<name>(...)` at statement position — call as side-effect statement.
+        // Sigiled idents are rejected here: a bare `^x.` has no observable
+        // effect, so it would only be confusion.
+        TokenKind::PlainIdent(_) if matches!(p.peek_kind_at(1), TokenKind::LParen) => {
+            parse_call_stmt(p).map(Stmt::Call)
+        }
         other => Err(ParseError::UnknownStatementStart {
             found: other.clone(),
             span: p.peek_span(),
@@ -159,6 +168,104 @@ fn parse_continue(p: &mut Parser) -> Result<ContinueStmt, ParseError> {
     })
 }
 
+fn parse_function(p: &mut Parser) -> Result<FunctionStmt, ParseError> {
+    let kw_span = expect_keyword(p, Keyword::Functio, "keyword `functio`")?;
+    let name = parse_plain_ident(p, "function name (PlainIdent)")?;
+    expect_kind(p, &TokenKind::LParen, "`(`")?;
+    let params = parse_param_list(p)?;
+    expect_kind(p, &TokenKind::RParen, "`)`")?;
+    let return_type = if matches!(p.peek_kind(), TokenKind::Keyword(Keyword::Dat)) {
+        p.advance();
+        Some(parse_type_ref(p)?)
+    } else {
+        None
+    };
+    expect_kind(p, &TokenKind::Colon, "`:`")?;
+    let body = parse_block(p)?;
+    Ok(FunctionStmt {
+        span: kw_span.join(body.span),
+        name,
+        params,
+        return_type,
+        body,
+    })
+}
+
+fn parse_param_list(p: &mut Parser) -> Result<Vec<Param>, ParseError> {
+    let mut params = Vec::new();
+    // Empty list: zero-arg signature `functio foo() :`.
+    if matches!(p.peek_kind(), TokenKind::RParen) {
+        return Ok(params);
+    }
+    loop {
+        params.push(parse_param(p)?);
+        match p.peek_kind() {
+            TokenKind::Comma => {
+                p.advance();
+                // Trailing comma: `(^x: Sermo,)` — exit if `)` follows.
+                if matches!(p.peek_kind(), TokenKind::RParen) {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    Ok(params)
+}
+
+fn parse_param(p: &mut Parser) -> Result<Param, ParseError> {
+    let name = parse_sigiled_ident(p)?;
+    expect_kind(p, &TokenKind::Colon, "`:`")?;
+    let type_ref = parse_type_ref(p)?;
+    Ok(Param {
+        span: name.span.join(type_ref.span),
+        name,
+        type_ref,
+    })
+}
+
+fn parse_type_ref(p: &mut Parser) -> Result<TypeRef, ParseError> {
+    let tok = p.current_clone();
+    match tok.kind {
+        TokenKind::PlainIdent(name) => {
+            // PRD §4.9: type names must use PascalCase. The lexer doesn't have
+            // type-position context, so the check happens here.
+            if !name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                return Err(ParseError::TypePositionRequiresPascalCase {
+                    name,
+                    span: tok.span,
+                });
+            }
+            p.advance();
+            let ident = Ident::new(name, tok.span);
+            Ok(TypeRef {
+                name: ident,
+                span: tok.span,
+            })
+        }
+        other => Err(ParseError::UnexpectedToken {
+            found: other,
+            expected: "type name (PascalCase identifier)",
+            span: tok.span,
+        }),
+    }
+}
+
+fn parse_return(p: &mut Parser) -> Result<ReturnStmt, ParseError> {
+    let kw_span = expect_keyword(p, Keyword::Redde, "keyword `redde`")?;
+    // `redde.` is bare unit return; `redde <expr>.` carries a value.
+    let value = if matches!(p.peek_kind(), TokenKind::Period) {
+        None
+    } else {
+        Some(parse_expr(p)?)
+    };
+    let period_span = expect_kind(p, &TokenKind::Period, "`.`")?;
+    Ok(ReturnStmt {
+        value,
+        span: kw_span.join(period_span),
+    })
+}
+
 fn parse_block(p: &mut Parser) -> Result<Block, ParseError> {
     let indent_span = expect_kind(p, &TokenKind::Indent, "indented block")?;
     let mut stmts = Vec::new();
@@ -172,218 +279,32 @@ fn parse_block(p: &mut Parser) -> Result<Block, ParseError> {
     })
 }
 
-// ─── Expression precedence cascade ──────────────────────────────────────────
-//
-// Lowest precedence at the top, highest at the bottom. All binary levels are
-// left-associative (Rust's behavior); unary `non` is right-associative by
-// recursion. The cascade mirrors PRD §4.4's Rust-inherited table.
-
-fn parse_expr(p: &mut Parser) -> Result<Expr, ParseError> {
-    parse_or(p)
-}
-
-fn parse_or(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_and(p)?;
-    while matches!(p.peek_kind(), TokenKind::Keyword(Keyword::Vel)) {
-        p.advance();
-        let rhs = parse_and(p)?;
-        lhs = make_binop(BinOp::Vel, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn parse_and(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_equality(p)?;
-    while matches!(p.peek_kind(), TokenKind::Keyword(Keyword::Et)) {
-        p.advance();
-        let rhs = parse_equality(p)?;
-        lhs = make_binop(BinOp::Et, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn parse_equality(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_comparison(p)?;
-    loop {
-        let op = match p.peek_kind() {
-            TokenKind::Keyword(Keyword::Aequat) => {
-                p.advance();
-                BinOp::Aequat
-            }
-            TokenKind::Keyword(Keyword::Non)
-                if matches!(p.peek_kind_at(1), TokenKind::Keyword(Keyword::Aequat)) =>
-            {
-                p.advance(); // non
-                p.advance(); // aequat
-                BinOp::NonAequat
-            }
-            _ => break,
-        };
-        let rhs = parse_comparison(p)?;
-        lhs = make_binop(op, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn parse_comparison(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_additive(p)?;
-    loop {
-        let head = match p.peek_kind() {
-            TokenKind::Keyword(Keyword::Minor) => Keyword::Minor,
-            TokenKind::Keyword(Keyword::Maior) => Keyword::Maior,
-            _ => break,
-        };
-        p.advance(); // minor | maior
-        let op = consume_comparison_completer(p, head)?;
-        let rhs = parse_additive(p)?;
-        lhs = make_binop(op, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn consume_comparison_completer(p: &mut Parser, head: Keyword) -> Result<BinOp, ParseError> {
-    match p.peek_kind() {
-        TokenKind::Keyword(Keyword::Quam) => {
-            p.advance();
-            Ok(match head {
-                Keyword::Minor => BinOp::MinorQuam,
-                Keyword::Maior => BinOp::MaiorQuam,
-                _ => unreachable!(),
-            })
-        }
-        TokenKind::Keyword(Keyword::Vel) => {
-            p.advance();
-            expect_keyword(
-                p,
-                Keyword::Par,
-                "keyword `par` to complete `vel par` phrase",
-            )?;
-            Ok(match head {
-                Keyword::Minor => BinOp::MinorVelPar,
-                Keyword::Maior => BinOp::MaiorVelPar,
-                _ => unreachable!(),
-            })
-        }
-        _ => {
-            let tok = p.current_clone();
-            let label = match head {
-                Keyword::Minor => "keyword `quam` or `vel par` to complete `minor` comparison",
-                Keyword::Maior => "keyword `quam` or `vel par` to complete `maior` comparison",
-                _ => unreachable!(),
-            };
-            Err(ParseError::UnexpectedToken {
-                found: tok.kind,
-                expected: label,
-                span: tok.span,
-            })
-        }
-    }
-}
-
-fn parse_additive(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_multiplicative(p)?;
-    loop {
-        let op = match p.peek_kind() {
-            TokenKind::Keyword(Keyword::Plus) => BinOp::Plus,
-            TokenKind::Keyword(Keyword::Minus) => BinOp::Minus,
-            _ => break,
-        };
-        p.advance();
-        let rhs = parse_multiplicative(p)?;
-        lhs = make_binop(op, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn parse_multiplicative(p: &mut Parser) -> Result<Expr, ParseError> {
-    let mut lhs = parse_unary(p)?;
-    loop {
-        let op = match p.peek_kind() {
-            TokenKind::Keyword(Keyword::Per) => {
-                p.advance();
-                BinOp::Per
-            }
-            TokenKind::Keyword(Keyword::Modulo) => {
-                p.advance();
-                BinOp::Modulo
-            }
-            TokenKind::Keyword(Keyword::Divisus) => {
-                p.advance();
-                expect_keyword(p, Keyword::Per, "keyword `per` to complete `divisus per`")?;
-                BinOp::DivisusPer
-            }
-            _ => break,
-        };
-        let rhs = parse_unary(p)?;
-        lhs = make_binop(op, lhs, rhs);
-    }
-    Ok(lhs)
-}
-
-fn parse_unary(p: &mut Parser) -> Result<Expr, ParseError> {
-    // `non aequat` is the binary `!=` operator (handled at parse_equality);
-    // standalone `non` here is the unary logical-not prefix. The equality level
-    // pre-empts `non aequat`, so by the time we reach parse_unary the only `non`
-    // we can see is the prefix form.
-    if matches!(p.peek_kind(), TokenKind::Keyword(Keyword::Non)) {
-        let non_span = p.peek_span();
-        p.advance();
-        let operand = parse_unary(p)?;
-        let span = non_span.join(operand.span());
-        return Ok(Expr::UnaryOp(UnaryOpExpr {
-            op: UnaryOp::Non,
-            operand: Box::new(operand),
-            span,
-        }));
-    }
-    parse_primary(p)
-}
-
-fn parse_primary(p: &mut Parser) -> Result<Expr, ParseError> {
-    let tok = p.current_clone();
-    let span = tok.span;
-    match tok.kind {
-        TokenKind::StringLit(value) => {
-            p.advance();
-            Ok(Expr::StringLit(StringLit { value, span }))
-        }
-        TokenKind::IntegerLit(value) => {
-            p.advance();
-            Ok(Expr::IntegerLit(IntegerLit { value, span }))
-        }
-        TokenKind::Keyword(Keyword::Verum) => {
-            p.advance();
-            Ok(Expr::BoolLit(BoolLit { value: true, span }))
-        }
-        TokenKind::Keyword(Keyword::Falsum) => {
-            p.advance();
-            Ok(Expr::BoolLit(BoolLit { value: false, span }))
-        }
-        TokenKind::SigiledIdent { sigil, name } => {
-            p.advance();
-            Ok(Expr::VarRef(SigiledIdent::new(sigil, name, span)))
-        }
-        TokenKind::LParen => {
-            p.advance();
-            let inner = parse_expr(p)?;
-            expect_kind(p, &TokenKind::RParen, "`)`")?;
-            Ok(inner)
-        }
-        other => Err(ParseError::ExpectedExpression { found: other, span }),
-    }
-}
-
-fn make_binop(op: BinOp, lhs: Expr, rhs: Expr) -> Expr {
-    let span = lhs.span().join(rhs.span());
-    Expr::BinOp(BinOpExpr {
-        op,
-        lhs: Box::new(lhs),
-        rhs: Box::new(rhs),
-        span,
+fn parse_call_stmt(p: &mut Parser) -> Result<CallStmt, ParseError> {
+    let callee = parse_plain_ident(p, "function name (PlainIdent)")?;
+    let call = parse_call(p, callee)?;
+    let period_span = expect_kind(p, &TokenKind::Period, "`.`")?;
+    Ok(CallStmt {
+        span: call.span.join(period_span),
+        call,
     })
 }
 
-fn parse_sigiled_ident(p: &mut Parser) -> Result<SigiledIdent, ParseError> {
+fn parse_plain_ident(p: &mut Parser, label: &'static str) -> Result<Ident, ParseError> {
+    let tok = p.current_clone();
+    match tok.kind {
+        TokenKind::PlainIdent(name) => {
+            p.advance();
+            Ok(Ident::new(name, tok.span))
+        }
+        other => Err(ParseError::UnexpectedToken {
+            found: other,
+            expected: label,
+            span: tok.span,
+        }),
+    }
+}
+
+pub(super) fn parse_sigiled_ident(p: &mut Parser) -> Result<SigiledIdent, ParseError> {
     let tok = p.current_clone();
     let span = tok.span;
     match tok.kind {
@@ -399,7 +320,11 @@ fn parse_sigiled_ident(p: &mut Parser) -> Result<SigiledIdent, ParseError> {
     }
 }
 
-fn expect_keyword(p: &mut Parser, kw: Keyword, label: &'static str) -> Result<Span, ParseError> {
+pub(super) fn expect_keyword(
+    p: &mut Parser,
+    kw: Keyword,
+    label: &'static str,
+) -> Result<Span, ParseError> {
     let tok = p.current_clone();
     if matches!(&tok.kind, TokenKind::Keyword(k) if *k == kw) {
         p.advance();
@@ -413,7 +338,11 @@ fn expect_keyword(p: &mut Parser, kw: Keyword, label: &'static str) -> Result<Sp
     }
 }
 
-fn expect_kind(p: &mut Parser, want: &TokenKind, label: &'static str) -> Result<Span, ParseError> {
+pub(super) fn expect_kind(
+    p: &mut Parser,
+    want: &TokenKind,
+    label: &'static str,
+) -> Result<Span, ParseError> {
     let tok = p.current_clone();
     if std::mem::discriminant(&tok.kind) == std::mem::discriminant(want) {
         p.advance();

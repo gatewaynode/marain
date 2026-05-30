@@ -1,0 +1,1 @@
+12_type_pascal_case.lat:1:15: error: type names must use PascalCase; got `sermo` (PRD §4.9)

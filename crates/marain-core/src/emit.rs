@@ -15,7 +15,8 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::ast::{
-    Block, ElseBranch, Expr, IfStmt, LetStmt, LoopStmt, MacroCallStmt, Module, Stmt, WhileStmt,
+    Block, CallExpr, CallStmt, ElseBranch, Expr, FunctionStmt, IfStmt, LetStmt, LoopStmt,
+    MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
 };
 use crate::error::Diagnostic;
 use crate::span::Span;
@@ -23,17 +24,32 @@ use crate::token::Sigil;
 
 /// Emit a Stage 1 module as a complete Rust source string.
 ///
-/// Output shape:
+/// Output shape: top-level `functio` declarations emit as siblings of
+/// `fn main()`; every other top-level statement lands inside `fn main()`.
+/// `fn main()` is always emitted (cargo requires it for a binary crate) even
+/// when the source contains only function declarations.
+///
 /// ```text
-/// fn main() {
-///     <emitted statements, one per line, 4-space indent>
+/// fn <user-function>(...) { ... }   // pass 1
+/// fn main() {                       // pass 2
+///     <non-function top-level stmts, one per line, 4-space indent>
 /// }
 /// ```
 pub fn emit(module: &Module) -> Result<String, EmitError> {
     let mut out = String::new();
+    // Pass 1: user-defined functions as top-level items.
+    for stmt in &module.items {
+        if let Stmt::Function(f) = stmt {
+            emit_function(&mut out, f)?;
+            out.push('\n');
+        }
+    }
+    // Pass 2: everything else inside fn main(). Always emitted.
     out.push_str("fn main() {\n");
     for stmt in &module.items {
-        emit_stmt(&mut out, stmt, 1)?;
+        if !matches!(stmt, Stmt::Function(_)) {
+            emit_stmt(&mut out, stmt, 1)?;
+        }
     }
     out.push_str("}\n");
     Ok(out)
@@ -49,8 +65,76 @@ fn emit_stmt(out: &mut String, stmt: &Stmt, indent_level: usize) -> Result<(), E
         Stmt::Loop(l) => emit_loop(out, l, indent_level)?,
         Stmt::Break(_) => out.push_str("break;"),
         Stmt::Continue(_) => out.push_str("continue;"),
+        Stmt::Return(r) => emit_return(out, r)?,
+        Stmt::Call(c) => emit_call_stmt(out, c)?,
+        // Function declarations only appear at module level; they're handled
+        // by `emit`'s two-pass walk before reaching `fn main`. Nested
+        // `functio` declarations aren't a Stage 1 feature.
+        Stmt::Function(_) => {
+            unreachable!("nested function declarations not in Stage 1 scope")
+        }
     }
     out.push('\n');
+    Ok(())
+}
+
+fn emit_function(out: &mut String, f: &FunctionStmt) -> Result<(), EmitError> {
+    out.push_str("fn ");
+    let name = escape_ident_for_rust(&f.name.name, f.name.span)?;
+    out.push_str(&name);
+    out.push('(');
+    for (i, p) in f.params.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        emit_param(out, p)?;
+    }
+    out.push(')');
+    if let Some(rt) = &f.return_type {
+        out.push_str(" -> ");
+        emit_type_ref(out, rt)?;
+    }
+    out.push_str(" {\n");
+    emit_block_body(out, &f.body, 1)?;
+    out.push_str("}\n");
+    Ok(())
+}
+
+fn emit_param(out: &mut String, p: &Param) -> Result<(), EmitError> {
+    // Sigil convention parallels `Stmt::Let`: `@` adds `mut`, `^` is bare.
+    if matches!(p.name.sigil, Sigil::Mutable) {
+        out.push_str("mut ");
+    }
+    let name = escape_ident_for_rust(&p.name.name, p.name.span)?;
+    out.push_str(&name);
+    out.push_str(": ");
+    emit_type_ref(out, &p.type_ref)?;
+    Ok(())
+}
+
+fn emit_type_ref(out: &mut String, t: &TypeRef) -> Result<(), EmitError> {
+    // Translation table per B-3 / locked decision: canonical Marain type names
+    // map to their Rust counterparts; everything else passes through verbatim
+    // for rustc to adjudicate (a `structura` declaration in v0.3+ becomes a
+    // first-class entry here without breaking pass-through users).
+    let mapped = match t.name.name.as_str() {
+        "Sermo" => "String",
+        "Numerus" => "i64",
+        other => other,
+    };
+    out.push_str(mapped);
+    Ok(())
+}
+
+fn emit_return(out: &mut String, r: &ReturnStmt) -> Result<(), EmitError> {
+    match &r.value {
+        Some(expr) => {
+            out.push_str("return ");
+            emit_expr(out, expr)?;
+            out.push(';');
+        }
+        None => out.push_str("return;"),
+    }
     Ok(())
 }
 
@@ -207,7 +291,28 @@ fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> {
             emit_expr(out, &u.operand)?;
             out.push(')');
         }
+        Expr::Call(c) => emit_call(out, c)?,
     }
+    Ok(())
+}
+
+fn emit_call_stmt(out: &mut String, c: &CallStmt) -> Result<(), EmitError> {
+    emit_call(out, &c.call)?;
+    out.push(';');
+    Ok(())
+}
+
+fn emit_call(out: &mut String, c: &CallExpr) -> Result<(), EmitError> {
+    let name = escape_ident_for_rust(&c.callee.name, c.callee.span)?;
+    out.push_str(&name);
+    out.push('(');
+    for (i, arg) in c.args.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        emit_expr(out, arg)?;
+    }
+    out.push(')');
     Ok(())
 }
 

@@ -1,0 +1,4 @@
+functio answer() dat Numerus :
+    redde 42.
+sit ^x est answer().
+dic ^x.

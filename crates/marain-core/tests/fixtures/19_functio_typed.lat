@@ -1,0 +1,4 @@
+functio echo(^x: Sermo) dat Sermo :
+    redde ^x.
+sit ^msg est echo("hello").
+dic ^msg.

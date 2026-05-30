@@ -1,0 +1,1 @@
+11_generics_lookalike.lat:1:22: error: unexpected '<'; generics are deferred to v0.3+ (PRD §4.11.6) and comparisons use `minor quam` / `maior quam` (PRD §4.4)

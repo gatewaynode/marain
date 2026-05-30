@@ -1,0 +1,4 @@
+functio add(^a: Numerus, ^b: Numerus) dat Numerus :
+    redde ^a plus ^b.
+sit ^sum est add(2, 3).
+dic ^sum.

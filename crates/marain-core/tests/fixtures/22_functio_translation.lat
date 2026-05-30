@@ -1,0 +1,4 @@
+functio greet(^name: Sermo, ^count: Numerus) dat Sermo :
+    redde ^name.
+functio identity(^x: Custom) dat Custom :
+    redde ^x.
