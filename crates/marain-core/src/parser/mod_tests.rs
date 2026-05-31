@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use super::*;
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Expr, IntegerLit, Stmt};
 use crate::error::MarainError;
 use crate::lexer::lex;
 use crate::source::SourceMap;
@@ -1211,4 +1211,197 @@ fn function_call_returns_value_to_let_binding() {
     assert_eq!(m.items.len(), 2);
     assert!(matches!(m.items[0], Stmt::Function(_)));
     assert!(matches!(m.items[1], Stmt::Let(_)));
+}
+
+// --- R14: range expressions ---
+
+#[test]
+fn range_exclusive_in_let_rhs() {
+    let m = parse_ok("sit ^r est 0..10.\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Range(r) => {
+                assert!(!r.inclusive);
+                assert!(matches!(
+                    r.start.as_deref(),
+                    Some(Expr::IntegerLit(IntegerLit { value: 0, .. }))
+                ));
+                assert!(matches!(
+                    r.end.as_deref(),
+                    Some(Expr::IntegerLit(IntegerLit { value: 10, .. }))
+                ));
+            }
+            other => panic!("expected Range, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn range_inclusive_in_let_rhs() {
+    let m = parse_ok("sit ^r est 0..=10.\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Range(r) => assert!(r.inclusive),
+            other => panic!("expected Range, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn range_with_binop_endpoints() {
+    // `1 plus 2 .. 10 minus 3` — additive binds tighter than range.
+    let m = parse_ok("sit ^r est 1 plus 2..10 minus 3.\n");
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::Range(r) => {
+                assert!(!r.inclusive);
+                assert!(matches!(r.start.as_deref(), Some(Expr::BinOp(_))));
+                assert!(matches!(r.end.as_deref(), Some(Expr::BinOp(_))));
+            }
+            other => panic!("expected Range, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn range_missing_rhs_is_error() {
+    // `0..` followed by statement terminator — RHS required (open ranges
+    // deferred per B-1).
+    let e = parse_err("sit ^r est 0...\n");
+    assert!(matches!(e, ParseError::ExpectedExpression { .. }));
+}
+
+#[test]
+fn range_at_statement_position_in_dic() {
+    // `dic 0..10.` — range flows through macro arg.
+    let m = parse_ok("dic 0..10.\n");
+    match &m.items[0] {
+        Stmt::MacroCall(c) => assert!(matches!(c.arg, Expr::Range(_))),
+        other => panic!("expected MacroCall, got {other:?}"),
+    }
+}
+
+// --- R14: `pro` for-loops ---
+
+#[test]
+fn pro_over_range_parses() {
+    let m = parse_ok("pro ^i in 0..10 :\n    dic ^i.\n");
+    match &m.items[0] {
+        Stmt::For(f) => {
+            assert_eq!(f.binding.name, "i");
+            assert_eq!(f.binding.sigil, Sigil::Immutable);
+            assert!(matches!(f.iter, Expr::Range(_)));
+            assert_eq!(f.body.stmts.len(), 1);
+        }
+        other => panic!("expected For, got {other:?}"),
+    }
+}
+
+#[test]
+fn pro_over_inclusive_range_parses() {
+    let m = parse_ok("pro ^i in 0..=10 :\n    dic ^i.\n");
+    match &m.items[0] {
+        Stmt::For(f) => match &f.iter {
+            Expr::Range(r) => assert!(r.inclusive),
+            other => panic!("expected Range, got {other:?}"),
+        },
+        other => panic!("expected For, got {other:?}"),
+    }
+}
+
+#[test]
+fn pro_with_mutable_binding_parses() {
+    let m = parse_ok("pro @counter in 0..3 :\n    dic ^counter.\n");
+    match &m.items[0] {
+        Stmt::For(f) => {
+            assert_eq!(f.binding.sigil, Sigil::Mutable);
+            assert_eq!(f.binding.name, "counter");
+        }
+        other => panic!("expected For, got {other:?}"),
+    }
+}
+
+#[test]
+fn pro_over_var_ref_parses() {
+    // Iterable need not be a range — any expression works.
+    let m = parse_ok("sit ^xs est 0..3.\npro ^x in ^xs :\n    dic ^x.\n");
+    assert_eq!(m.items.len(), 2);
+    assert!(matches!(m.items[1], Stmt::For(_)));
+}
+
+#[test]
+fn pro_missing_in_is_error() {
+    let e = parse_err("pro ^i 0..10 :\n    dic ^i.\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(
+                expected.contains("`in`"),
+                "expected label mentioned `in`; got: {expected:?}"
+            );
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn pro_missing_sigil_on_binding_is_error() {
+    let e = parse_err("pro i in 0..10 :\n    dic ^i.\n");
+    assert!(matches!(e, ParseError::UnexpectedToken { .. }));
+}
+
+#[test]
+fn pro_missing_colon_is_error() {
+    let e = parse_err("pro ^i in 0..10\n    dic ^i.\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`:`"), "got: {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+// --- R15: `nihil` ---
+
+#[test]
+fn bare_nihil_at_top_level_parses() {
+    let m = parse_ok("nihil.\n");
+    assert!(matches!(m.items[0], Stmt::Nihil(_)));
+}
+
+#[test]
+fn nihil_inside_pro_body() {
+    let m = parse_ok("pro ^i in 0..3 :\n    nihil.\n");
+    match &m.items[0] {
+        Stmt::For(f) => {
+            assert_eq!(f.body.stmts.len(), 1);
+            assert!(matches!(f.body.stmts[0], Stmt::Nihil(_)));
+        }
+        other => panic!("expected For, got {other:?}"),
+    }
+}
+
+#[test]
+fn nihil_inside_functio_body() {
+    let m = parse_ok("functio stub() :\n    nihil.\n");
+    match &m.items[0] {
+        Stmt::Function(f) => {
+            assert_eq!(f.body.stmts.len(), 1);
+            assert!(matches!(f.body.stmts[0], Stmt::Nihil(_)));
+        }
+        other => panic!("expected Function, got {other:?}"),
+    }
+}
+
+#[test]
+fn nihil_missing_period_is_error() {
+    let e = parse_err("nihil\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`.`"), "got: {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
 }

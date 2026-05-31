@@ -170,8 +170,19 @@ pub fn lex(file: &SourceFile) -> Result<Vec<Token>, LexError> {
             b if idents::is_ident_start(b) => idents::scan_ident(&mut cursor, file_id),
             b'@' | b'^' => idents::scan_sigiled_ident(&mut cursor, file_id)?,
             b'.' => {
-                cursor.advance();
-                Token::new(TokenKind::Period, Span::new(start, cursor.pos(), file_id))
+                cursor.advance(); // first .
+                match cursor.peek() {
+                    Some(b'.') => {
+                        cursor.advance(); // second .
+                        if cursor.peek() == Some(b'=') {
+                            cursor.advance(); // =
+                            Token::new(TokenKind::DotDotEq, Span::new(start, cursor.pos(), file_id))
+                        } else {
+                            Token::new(TokenKind::DotDot, Span::new(start, cursor.pos(), file_id))
+                        }
+                    }
+                    _ => Token::new(TokenKind::Period, Span::new(start, cursor.pos(), file_id)),
+                }
             }
             b',' => {
                 cursor.advance();
@@ -669,5 +680,70 @@ mod tests {
             LexError::UnexpectedChar { ch, .. } => assert_eq!(ch, '/'),
             other => panic!("expected UnexpectedChar, got {other:?}"),
         }
+    }
+
+    // --- R14: range tokens (`..` / `..=`) ---
+
+    #[test]
+    fn dot_dot_is_one_token() {
+        let toks = lex_str("0..10");
+        let expected = vec![
+            TokenKind::IntegerLit(0),
+            TokenKind::DotDot,
+            TokenKind::IntegerLit(10),
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn dot_dot_eq_is_one_token() {
+        let toks = lex_str("0..=10");
+        let expected = vec![
+            TokenKind::IntegerLit(0),
+            TokenKind::DotDotEq,
+            TokenKind::IntegerLit(10),
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn period_unchanged_by_dotdot_dispatcher() {
+        // Statement-terminator `.` (single dot) still lexes as Period.
+        let toks = lex_str("dic ^x.\n");
+        let expected = vec![
+            TokenKind::Keyword(Keyword::Dic),
+            TokenKind::SigiledIdent {
+                sigil: Sigil::Immutable,
+                name: "x".to_string(),
+            },
+            TokenKind::Period,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn three_dots_lex_as_dotdot_then_period() {
+        // `...` is not its own token; greedy `..` wins, third `.` is Period.
+        let toks = lex_str("...");
+        let expected = vec![TokenKind::DotDot, TokenKind::Period, TokenKind::Eof];
+        assert_eq!(toks, expected);
+    }
+
+    #[test]
+    fn dot_dot_with_trailing_period() {
+        // `0..10.` (range used as macro arg) — IntegerLit, DotDot, IntegerLit, Period.
+        let toks = lex_str("dic 0..10.\n");
+        let expected = vec![
+            TokenKind::Keyword(Keyword::Dic),
+            TokenKind::IntegerLit(0),
+            TokenKind::DotDot,
+            TokenKind::IntegerLit(10),
+            TokenKind::Period,
+            TokenKind::Eof,
+        ];
+        assert_eq!(toks, expected);
     }
 }

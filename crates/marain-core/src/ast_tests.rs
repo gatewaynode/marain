@@ -306,3 +306,43 @@ fn else_branch_block_and_if_shapes() {
     let chained = ElseBranch::If(Box::new(inner));
     assert_eq!(chained.span(), sp(20, 36));
 }
+
+#[test]
+fn range_expr_span_dispatches_through_expr() {
+    let r = Expr::Range(RangeExpr {
+        start: Some(Box::new(Expr::IntegerLit(IntegerLit {
+            value: 0,
+            span: sp(0, 1),
+        }))),
+        end: Some(Box::new(Expr::IntegerLit(IntegerLit {
+            value: 10,
+            span: sp(3, 5),
+        }))),
+        inclusive: false,
+        span: sp(0, 5),
+    });
+    assert_eq!(r.span(), sp(0, 5));
+}
+
+#[test]
+fn for_stmt_span_dispatches_through_stmt() {
+    let f = Stmt::For(ForStmt {
+        binding: SigiledIdent::new(Sigil::Immutable, "i".to_string(), sp(4, 6)),
+        iter: Expr::IntegerLit(IntegerLit {
+            value: 10,
+            span: sp(10, 12),
+        }),
+        body: Block {
+            stmts: vec![],
+            span: sp(14, 24),
+        },
+        span: sp(0, 24),
+    });
+    assert_eq!(f.span(), sp(0, 24));
+}
+
+#[test]
+fn nihil_stmt_span_dispatches_through_stmt() {
+    let n = Stmt::Nihil(NihilStmt { span: sp(0, 7) });
+    assert_eq!(n.span(), sp(0, 7));
+}

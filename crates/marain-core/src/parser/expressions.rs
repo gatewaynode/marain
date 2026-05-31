@@ -11,8 +11,8 @@
 //! recursion. The cascade mirrors PRD §4.4's Rust-inherited table.
 
 use crate::ast::{
-    BinOp, BinOpExpr, BoolLit, CallExpr, Expr, Ident, IntegerLit, SigiledIdent, StringLit, UnaryOp,
-    UnaryOpExpr,
+    BinOp, BinOpExpr, BoolLit, CallExpr, Expr, Ident, IntegerLit, RangeExpr, SigiledIdent,
+    StringLit, UnaryOp, UnaryOpExpr,
 };
 use crate::lexer::keywords::Keyword;
 use crate::token::TokenKind;
@@ -22,7 +22,30 @@ use super::error::ParseError;
 use super::grammar::{expect_keyword, expect_kind};
 
 pub(super) fn parse_expr(p: &mut Parser) -> Result<Expr, ParseError> {
-    parse_or(p)
+    parse_range(p)
+}
+
+/// Range level — lowest infix precedence (per PRD §4.4 / Rust's table).
+/// v0.2 only produces fully-bounded ranges (`a..b`, `a..=b`); both operands
+/// pass through `parse_or`. Open-ended ranges (`..b`, `a..`, `..`) are not
+/// emitted by the parser today — `RangeExpr`'s `Option` fields reserve the
+/// shape for a future round per locked B-3.
+fn parse_range(p: &mut Parser) -> Result<Expr, ParseError> {
+    let lhs = parse_or(p)?;
+    let inclusive = match p.peek_kind() {
+        TokenKind::DotDot => false,
+        TokenKind::DotDotEq => true,
+        _ => return Ok(lhs),
+    };
+    p.advance(); // .. or ..=
+    let rhs = parse_or(p)?;
+    let span = lhs.span().join(rhs.span());
+    Ok(Expr::Range(RangeExpr {
+        start: Some(Box::new(lhs)),
+        end: Some(Box::new(rhs)),
+        inclusive,
+        span,
+    }))
 }
 
 fn parse_or(p: &mut Parser) -> Result<Expr, ParseError> {

@@ -22,6 +22,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 10 | §13 Block Parsing + `si` | **Closed** |
 | 11+12 | §14 Operator Expressions + Control Flow | **Closed** |
 | 13 | §15 Function Declarations + Calls | **Closed** |
+| 14+15 | §16 Loops + Ranges + `nihil` | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -1414,3 +1415,174 @@ justifications per CLAUDE.md.
 - **Closures.** Deferred per PRD §4.11.6. When they land, `Expr::Call`
   generalizes — callee becomes an `Expr` rather than an `Ident`. The
   `args: Vec<Expr>` field is already shaped to absorb the change.
+
+## 16. Loops + Ranges + `nihil`
+
+Rounds 14 + 15, batched per locked decision A. The lexer learns the two
+range tokens `..` / `..=`; the parser learns range expressions (lowest infix
+precedence), the `pro <binding> in <iterable> :` for-loop, and the `nihil.`
+do-nothing sentinel. Function and block bodies are already first-class block
+contexts (R10/R13), so `pro` bodies and `nihil` statements slot into the
+existing `parse_block` mechanism with no structural changes.
+
+### 16.1 Scope (v0.2)
+
+**In:**
+- Range tokens `DotDot` (`..`) and `DotDotEq` (`..=`); the `.` lexer arm now
+  peeks one/two bytes to distinguish `Period` / `DotDot` / `DotDotEq`.
+- Range expressions `a..b` (exclusive) and `a..=b` (inclusive) at a new
+  lowest-precedence `parse_range` cascade level (PRD §4.11.5).
+- `pro <sigiled-binding> in <iterable> : <body>` for-loops (PRD §4.11.2).
+  `iterable` is any expression, so a range literal flows through naturally.
+- `nihil.` empty-block sentinel (PRD §4.11.4), emitting Rust `();`.
+- `Expr::Range(RangeExpr)`, `Stmt::For(ForStmt)`, `Stmt::Nihil(NihilStmt)`.
+
+**Out (deferred):** open-ended ranges `..b` / `a..` / `..` and `..=b`
+(the parser only produces fully-bounded ranges; `RangeExpr`'s `Option`
+fields reserve the shape); `pro` over arbitrary iterators beyond ranges and
+collection var-refs is unconstrained by design (any expression parses) but
+only typechecks if the emitted Rust value is `IntoIterator`; stepped ranges
+(`step_by`) and reverse ranges (no Rust `..` analogue) — out of scope.
+
+### 16.2 Decomposition
+
+```
+crates/marain-core/src/
+  token.rs                 (modified)  + DotDot, DotDotEq variants + Display
+  lexer/mod.rs             (modified)  `.` dispatch peeks for `..` / `..=`
+  ast.rs                   (modified)  + RangeExpr, ForStmt, NihilStmt;
+                                          +Expr::Range; +Stmt::For/Nihil;
+                                          span() dispatch extended
+  ast_tests.rs             (modified)  + span-dispatch tests for the 3 nodes
+  parser/
+    expressions.rs         (modified)  + parse_range (new lowest-precedence
+                                          level; parse_expr now enters here
+                                          then descends to parse_or)
+    grammar.rs             (modified)  + parse_for, parse_nihil; dispatch on
+                                          Keyword::Pro / Keyword::Nihil
+  emit.rs                  (modified)  + emit_for, range arm in emit_expr,
+                                          `();` arm for Stmt::Nihil
+  emit_tests.rs            (modified)  + R14 emit tests
+  parser/mod_tests.rs      (modified)  + R14 parser tests
+```
+
+File-size status post-R14 (production-side): `token.rs` 153 ✓, `ast.rs`
+381 ✓, `parser/grammar.rs` 383 ✓, `parser/expressions.rs` 292 ✓, `emit.rs`
+485 ✓ — all under the 500-LOC target. **No pressure-release split needed
+this round** (the R13-close watch-out that `emit.rs` might cross 500 did not
+materialize; it landed at 485). Test-file pressure-release status is
+unchanged in kind and applies to `parser/mod_tests.rs` (1407 LOC),
+`emit_tests.rs` (793), `lexer/mod.rs` (749) — each carries its module-doc
+justification.
+
+### 16.3 Decisions
+
+_Full rationale: [`tasks/decisions/R14_15_pro_ranges_nihil.md`](../tasks/decisions/R14_15_pro_ranges_nihil.md). Summary list below._
+
+- **A Round batching.** R14 (`pro` + ranges) and R15 (`nihil`) ship together — small, and `pro` bodies are the natural place to exercise `nihil`.
+- **Range precedence.** New `parse_range` is the lowest infix level: `parse_expr` enters at `parse_range`, which parses an `parse_or` lhs, then optionally consumes `..` / `..=` and a `parse_or` rhs. Mirrors Rust's table (ranges below all binary operators).
+- **Range operands are `parse_or`, not `parse_range`.** Ranges don't chain (`a..b..c` is not valid Rust); using `parse_or` for both operands makes chaining a parse error naturally, no special-casing.
+- **Bounded-only ranges.** Parser produces only `a..b` / `a..=b`; `RangeExpr.start`/`.end` are `Option<Box<Expr>>` so open-ended forms are a future round, not a reshape.
+- **`nihil` emit shape `();`** (the open sub-decision; chose `();` over `{}`). A unit statement satisfies the "block needs ≥1 statement" rule without introducing a nested scope.
+- **`pro` binding is a `SigiledIdent`.** Same sigil convention as `Stmt::Let` / `Param`: `^i` → `i`, `@i` → `mut i`. A bare (sigil-less) binding is a parse error (`expected sigiled identifier`), consistent with PRD §4.5.
+- **Range emit is not paren-wrapped.** Unlike `BinOp`/`UnaryOp` (paren-everywhere), ranges aren't operators in the precedence-drift sense; operands self-wrap via `emit_expr` if they are `BinOp`/`UnaryOp` shapes.
+
+### 16.4 New AST shape
+
+```rust
+pub enum Stmt {
+    // ... existing variants ...
+    For(ForStmt),     // new — pro <binding> in <iter> :
+    Nihil(NihilStmt), // new — nihil.
+}
+
+pub struct ForStmt {
+    pub binding: SigiledIdent,
+    pub iter: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+pub struct NihilStmt {
+    pub span: Span,
+}
+
+pub enum Expr {
+    // ... existing variants ...
+    Range(RangeExpr), // new
+}
+
+pub struct RangeExpr {
+    pub start: Option<Box<Expr>>,  // always Some from the v0.2 parser
+    pub end: Option<Box<Expr>>,    // always Some from the v0.2 parser
+    pub inclusive: bool,
+    pub span: Span,
+}
+```
+
+Carry-over α (inflection slot) untouched: `ForStmt.binding` is a
+`SigiledIdent`, which already carries the slot.
+
+### 16.5 Test coverage
+
+- **`ast_tests.rs`** — +3 tests: span dispatch through `Expr` for
+  `RangeExpr`, through `Stmt` for `ForStmt` and `NihilStmt`.
+- **`lexer/mod.rs`** — +5 driver tests: `0..10` → one `DotDot`, `0..=10`
+  → one `DotDotEq`, single `.` still `Period`, `...` → `DotDot` + `Period`
+  (greedy two-dot wins), trailing `0..10.` → range then `Period`.
+- **`token.rs`** — +2 `Display` assertions (`..` / `..=`).
+- **`parser/mod_tests.rs`** — +11 tests: ranges in let-RHS (exclusive /
+  inclusive), range with binop endpoints, range missing rhs is error,
+  range at statement position in `dic`; `pro` over exclusive / inclusive
+  range, `pro` with mutable binding, `pro` over a var-ref; error paths
+  (`pro` missing `in`, missing sigil on binding, missing colon); `nihil`
+  at top level, inside `pro` body, inside `functio` body, missing period.
+- **`emit_tests.rs`** — +11 tests: range emits `..` / `..=`, range with
+  binop endpoints preserves paren-wrap; `pro` over exclusive / inclusive
+  range emits `for … in …`, mutable binding emits `mut`, body indents
+  correctly, `pro` over var-ref emits clean iterator; `nihil` emits `();`,
+  inside `functio` body at correct indent, inside `pro` body.
+- **Goldens** — 4 new emit fixtures (`23_pro_range_exclusive`,
+  `24_pro_range_inclusive`, `25_functio_with_nihil`, `26_pro_with_nihil`)
+  and 3 new error fixtures (`errors/14_pro_missing_in`,
+  `errors/15_pro_missing_sigil`, `errors/16_nihil_missing_period`).
+
+**Test count delta: +35.** Workspace total at R14+R15 close: **450** (was
+415 at R13 close). `cargo fmt --check`, `cargo clippy --all-targets -D
+warnings`, `cargo test --all` all clean.
+
+### 16.6 Sentrux signal at R14+R15 close
+
+The session baseline was lost to a mid-round console crash; the comparison
+is against the recorded R13-close signal (7073). Post-R14 scan:
+`quality_signal` **7060** (`signal_delta` −13), DSM `above_diagonal` **0**
+(clean downward layering preserved), `import_edges` 38 → 41 (+3, from the
+new cross-module type uses: `ForStmt` into emit, `RangeExpr` into
+expressions, the new tokens into the parser), 0 cycles, `check_rules` 4/4
+pass / 0 violations. The small negative delta tracks genuinely-added
+surface area (2 tokens, 3 AST nodes, 3 parser fns, 3 emit arms) with no
+offsetting file split this round.
+
+### 16.7 Pressure-release tier 1 not invoked
+
+No production-side file crossed the 500-LOC target this round (largest:
+`emit.rs` at 485). The R13-close watch-out — that `emit.rs` plus
+`emit_for`/`emit_nihil`/range emit might cross 500 — resolved comfortably
+under target. Test siblings remain in their existing pressure-release
+status with unchanged justifications.
+
+### 16.8 Forward hooks
+
+- **Open-ended ranges (`..b`, `a..`, `..`, `..=b`).** `RangeExpr`'s
+  `Option` fields already model them; activation is a `parse_range` change
+  (allow a missing lhs before `..`, and a missing rhs after) plus the emit
+  arm, which already guards both sides with `if let Some`. No AST reshape.
+- **`pro` over collection iterators.** Today any expression parses as the
+  iterable; once `structura` / collection literals land, `pro ^x in ^xs :`
+  over a real collection typechecks without parser changes.
+- **Stepped / reverse iteration.** No direct Rust `..` analogue; would
+  lower to `.step_by(n)` / `.rev()` method calls once method-call syntax
+  exists. Deferred until then.
+- **`nihil` as an expression.** Today `nihil` is statement-only. If a
+  unit-valued expression position ever needs it, `Expr::Nihil` would mirror
+  `Stmt::Nihil`; no current use case.

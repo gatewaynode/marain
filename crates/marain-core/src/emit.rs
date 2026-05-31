@@ -15,7 +15,7 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::ast::{
-    Block, CallExpr, CallStmt, ElseBranch, Expr, FunctionStmt, IfStmt, LetStmt, LoopStmt,
+    Block, CallExpr, CallStmt, ElseBranch, Expr, ForStmt, FunctionStmt, IfStmt, LetStmt, LoopStmt,
     MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
 };
 use crate::error::Diagnostic;
@@ -63,10 +63,12 @@ fn emit_stmt(out: &mut String, stmt: &Stmt, indent_level: usize) -> Result<(), E
         Stmt::If(i) => emit_if(out, i, indent_level)?,
         Stmt::While(w) => emit_while(out, w, indent_level)?,
         Stmt::Loop(l) => emit_loop(out, l, indent_level)?,
+        Stmt::For(f) => emit_for(out, f, indent_level)?,
         Stmt::Break(_) => out.push_str("break;"),
         Stmt::Continue(_) => out.push_str("continue;"),
         Stmt::Return(r) => emit_return(out, r)?,
         Stmt::Call(c) => emit_call_stmt(out, c)?,
+        Stmt::Nihil(_) => out.push_str("();"),
         // Function declarations only appear at module level; they're handled
         // by `emit`'s two-pass walk before reaching `fn main`. Nested
         // `functio` declarations aren't a Stage 1 feature.
@@ -198,6 +200,23 @@ fn emit_loop(out: &mut String, l: &LoopStmt, indent_level: usize) -> Result<(), 
     Ok(())
 }
 
+fn emit_for(out: &mut String, f: &ForStmt, indent_level: usize) -> Result<(), EmitError> {
+    out.push_str("for ");
+    // Sigil convention parallels `Stmt::Let` / `Param`: `@` adds `mut`, `^` is bare.
+    if matches!(f.binding.sigil, Sigil::Mutable) {
+        out.push_str("mut ");
+    }
+    let name = escape_ident_for_rust(&f.binding.name, f.binding.span)?;
+    out.push_str(&name);
+    out.push_str(" in ");
+    emit_expr(out, &f.iter)?;
+    out.push_str(" {\n");
+    emit_block_body(out, &f.body, indent_level + 1)?;
+    push_indent(out, indent_level);
+    out.push('}');
+    Ok(())
+}
+
 fn emit_block_body(out: &mut String, block: &Block, indent_level: usize) -> Result<(), EmitError> {
     for stmt in &block.stmts {
         emit_stmt(out, stmt, indent_level)?;
@@ -292,6 +311,18 @@ fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> {
             out.push(')');
         }
         Expr::Call(c) => emit_call(out, c)?,
+        Expr::Range(r) => {
+            // No paren-wrap (ranges aren't BinOps and don't share the
+            // paren-everywhere rule); operands carry their own paren-wrap via
+            // emit_expr if they're BinOp/UnaryOp shapes.
+            if let Some(start) = &r.start {
+                emit_expr(out, start)?;
+            }
+            out.push_str(if r.inclusive { "..=" } else { ".." });
+            if let Some(end) = &r.end {
+                emit_expr(out, end)?;
+            }
+        }
     }
     Ok(())
 }

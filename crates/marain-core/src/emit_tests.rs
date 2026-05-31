@@ -711,3 +711,83 @@ fn call_stmt_with_args_emits_correctly() {
     let out = parse_and_emit("functio p(^x: Numerus, ^y: Numerus) :\n    dic \"x\".\np(1, 2).\n");
     assert!(out.contains("    p(1i64, 2i64);"));
 }
+
+// --- R14: range expressions ---
+
+#[test]
+fn range_exclusive_emits_dotdot() {
+    let out = parse_and_emit("sit ^r est 0..10.\n");
+    assert!(out.contains("let r = 0i64..10i64;"), "got: {out}");
+}
+
+#[test]
+fn range_inclusive_emits_dotdoteq() {
+    let out = parse_and_emit("sit ^r est 0..=10.\n");
+    assert!(out.contains("let r = 0i64..=10i64;"), "got: {out}");
+}
+
+#[test]
+fn range_with_binop_endpoints_preserves_paren_wrap() {
+    // BinOp operands keep their paren-wrap; range itself doesn't add parens.
+    let out = parse_and_emit("sit ^r est 1 plus 2..10 minus 3.\n");
+    assert!(
+        out.contains("let r = (1i64 + 2i64)..(10i64 - 3i64);"),
+        "got: {out}"
+    );
+}
+
+// --- R14: `pro` for-loops ---
+
+#[test]
+fn pro_over_exclusive_range_emits_for() {
+    let out = parse_and_emit("pro ^i in 0..10 :\n    dic ^i.\n");
+    assert!(out.contains("    for i in 0i64..10i64 {"), "got: {out}");
+}
+
+#[test]
+fn pro_over_inclusive_range_emits_for_dotdoteq() {
+    let out = parse_and_emit("pro ^i in 0..=10 :\n    dic ^i.\n");
+    assert!(out.contains("    for i in 0i64..=10i64 {"), "got: {out}");
+}
+
+#[test]
+fn pro_with_mutable_binding_emits_mut() {
+    let out = parse_and_emit("pro @c in 0..3 :\n    dic ^c.\n");
+    assert!(out.contains("    for mut c in 0i64..3i64 {"), "got: {out}");
+}
+
+#[test]
+fn pro_body_indents_correctly() {
+    let out = parse_and_emit("pro ^i in 0..3 :\n    dic ^i.\n");
+    // Body sits at indent level 2 (top-level=1, inside pro=2).
+    assert!(out.contains("        println!"), "got: {out}");
+}
+
+#[test]
+fn pro_over_var_ref_emits_clean_iter() {
+    let out = parse_and_emit("sit ^xs est 0..3.\npro ^x in ^xs :\n    dic ^x.\n");
+    assert!(out.contains("    for x in xs {"), "got: {out}");
+}
+
+// --- R15: `nihil` ---
+
+#[test]
+fn nihil_emits_unit_statement() {
+    let out = parse_and_emit("nihil.\n");
+    assert!(out.contains("    ();"), "got: {out}");
+}
+
+#[test]
+fn nihil_inside_functio_body_emits_at_indent() {
+    let out = parse_and_emit("functio stub() :\n    nihil.\n");
+    assert!(out.contains("fn stub() {\n    ();\n}"), "got: {out}");
+}
+
+#[test]
+fn nihil_inside_pro_body() {
+    let out = parse_and_emit("pro ^i in 0..3 :\n    nihil.\n");
+    assert!(
+        out.contains("    for i in 0i64..3i64 {\n        ();\n    }"),
+        "got: {out}"
+    );
+}

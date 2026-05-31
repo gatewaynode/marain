@@ -10,8 +10,9 @@
 //! word order (PRD §4.2).
 
 use crate::ast::{
-    Block, BreakStmt, CallStmt, ContinueStmt, ElseBranch, FunctionStmt, Ident, IfStmt, LetStmt,
-    LoopStmt, MacroCallStmt, Module, Param, ReturnStmt, SigiledIdent, Stmt, TypeRef, WhileStmt,
+    Block, BreakStmt, CallStmt, ContinueStmt, ElseBranch, ForStmt, FunctionStmt, Ident, IfStmt,
+    LetStmt, LoopStmt, MacroCallStmt, Module, NihilStmt, Param, ReturnStmt, SigiledIdent, Stmt,
+    TypeRef, WhileStmt,
 };
 use crate::lexer::keywords::Keyword;
 use crate::span::Span;
@@ -40,6 +41,8 @@ fn parse_stmt(p: &mut Parser) -> Result<Stmt, ParseError> {
         TokenKind::Keyword(Keyword::Si) => parse_if(p).map(Stmt::If),
         TokenKind::Keyword(Keyword::Dum) => parse_while(p).map(Stmt::While),
         TokenKind::Keyword(Keyword::Semper) => parse_loop(p).map(Stmt::Loop),
+        TokenKind::Keyword(Keyword::Pro) => parse_for(p).map(Stmt::For),
+        TokenKind::Keyword(Keyword::Nihil) => parse_nihil(p).map(Stmt::Nihil),
         TokenKind::Keyword(Keyword::Interrumpe) => parse_break(p).map(Stmt::Break),
         TokenKind::Keyword(Keyword::Continua) => parse_continue(p).map(Stmt::Continue),
         TokenKind::Keyword(Keyword::Functio) => parse_function(p).map(Stmt::Function),
@@ -149,6 +152,29 @@ fn parse_loop(p: &mut Parser) -> Result<LoopStmt, ParseError> {
     Ok(LoopStmt {
         span: semper_span.join(body.span),
         body,
+    })
+}
+
+fn parse_for(p: &mut Parser) -> Result<ForStmt, ParseError> {
+    let pro_span = expect_keyword(p, Keyword::Pro, "keyword `pro`")?;
+    let binding = parse_sigiled_ident(p)?;
+    expect_keyword(p, Keyword::In, "keyword `in`")?;
+    let iter = parse_expr(p)?;
+    expect_kind(p, &TokenKind::Colon, "`:`")?;
+    let body = parse_block(p)?;
+    Ok(ForStmt {
+        span: pro_span.join(body.span),
+        binding,
+        iter,
+        body,
+    })
+}
+
+fn parse_nihil(p: &mut Parser) -> Result<NihilStmt, ParseError> {
+    let kw_span = expect_keyword(p, Keyword::Nihil, "keyword `nihil`")?;
+    let period_span = expect_kind(p, &TokenKind::Period, "`.`")?;
+    Ok(NihilStmt {
+        span: kw_span.join(period_span),
     })
 }
 

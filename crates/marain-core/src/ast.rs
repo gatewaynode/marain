@@ -35,11 +35,13 @@ pub enum Stmt {
     If(IfStmt),
     While(WhileStmt),
     Loop(LoopStmt),
+    For(ForStmt),
     Break(BreakStmt),
     Continue(ContinueStmt),
     Function(FunctionStmt),
     Return(ReturnStmt),
     Call(CallStmt),
+    Nihil(NihilStmt),
 }
 
 impl Stmt {
@@ -50,11 +52,13 @@ impl Stmt {
             Self::If(s) => s.span,
             Self::While(s) => s.span,
             Self::Loop(s) => s.span,
+            Self::For(s) => s.span,
             Self::Break(s) => s.span,
             Self::Continue(s) => s.span,
             Self::Function(s) => s.span,
             Self::Return(s) => s.span,
             Self::Call(s) => s.span,
+            Self::Nihil(s) => s.span,
         }
     }
 }
@@ -112,6 +116,26 @@ pub struct WhileStmt {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LoopStmt {
     pub body: Block,
+    pub span: Span,
+}
+
+/// `pro <binding> in <iter> :` per PRD §4.11.2. `binding` is a sigiled
+/// identifier (sigil drops at emit time; `@` → `mut`). `iter` is any
+/// expression — typically a range literal (`0..10`) or a variable reference
+/// to a collection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForStmt {
+    pub binding: SigiledIdent,
+    pub iter: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// `nihil.` per PRD §4.11.4. The "do nothing on purpose" sentinel; lowers to
+/// a Rust unit-statement (`();`) so it satisfies the "block must contain at
+/// least one statement" rule without committing to behavior.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NihilStmt {
     pub span: Span,
 }
 
@@ -189,6 +213,7 @@ pub enum Expr {
     BinOp(BinOpExpr),
     UnaryOp(UnaryOpExpr),
     Call(CallExpr),
+    Range(RangeExpr),
 }
 
 impl Expr {
@@ -201,8 +226,21 @@ impl Expr {
             Self::BinOp(b) => b.span,
             Self::UnaryOp(u) => u.span,
             Self::Call(c) => c.span,
+            Self::Range(r) => r.span,
         }
     }
+}
+
+/// A range expression: `a..b` (exclusive) or `a..=b` (inclusive). v0.2 only
+/// produces fully-bounded ranges from the parser; `start` and `end` are
+/// `Option` so the shape covers all six Rust range variants when open-ended
+/// forms land in a future round.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RangeExpr {
+    pub start: Option<Box<Expr>>,
+    pub end: Option<Box<Expr>>,
+    pub inclusive: bool,
+    pub span: Span,
 }
 
 /// A function-call expression: `<callee>(<args>)`. Stage 1 callees are bare

@@ -31,6 +31,8 @@ pub enum TokenKind {
 
     // Punctuation
     Period,
+    DotDot,   // .. (range, exclusive)
+    DotDotEq, // ..= (range, inclusive)
     Comma,
     Colon,
     DoubleColon,
@@ -64,6 +66,8 @@ impl fmt::Display for TokenKind {
             Self::StringLit(_) => f.write_str("string literal"),
             Self::IntegerLit(_) => f.write_str("integer literal"),
             Self::Period => f.write_str("`.`"),
+            Self::DotDot => f.write_str("`..`"),
+            Self::DotDotEq => f.write_str("`..=`"),
             Self::Comma => f.write_str("`,`"),
             Self::Colon => f.write_str("`:`"),
             Self::DoubleColon => f.write_str("`::`"),
@@ -121,6 +125,8 @@ mod tests {
         assert_eq!(TokenKind::Period.to_string(), "`.`");
         assert_eq!(TokenKind::DoubleColon.to_string(), "`::`");
         assert_eq!(TokenKind::Bang.to_string(), "`!`");
+        assert_eq!(TokenKind::DotDot.to_string(), "`..`");
+        assert_eq!(TokenKind::DotDotEq.to_string(), "`..=`");
     }
 
     #[test]
