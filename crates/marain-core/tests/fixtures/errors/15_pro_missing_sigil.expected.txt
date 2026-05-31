@@ -1,0 +1,1 @@
+15_pro_missing_sigil.lat:1:5: error: expected sigiled identifier (`^name` or `@name`), found identifier

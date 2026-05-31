@@ -1,0 +1,4 @@
+functio stub() :
+    nihil.
+
+stub().
