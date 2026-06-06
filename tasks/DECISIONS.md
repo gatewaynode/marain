@@ -27,7 +27,8 @@ Rounds R1–R8 (foundation: crate layout, span model, error model, lexer, parser
 
 ## Related
 
-- `tasks/TODO.md` — round tracker (the *plan*).
+- `tasks/TODO.md` — round tracker + active findings (the *plan*).
+- `tasks/ROADMAP.md` — long-term backlog + deferred-feature index (the *horizon*); canonical home for v0.3+ items that ARCHITECTURE "Forward hooks" sections now point at.
 - `tasks/CONTINUITY.md` — cross-session notes (the *state*).
 - `tasks/LESSONS.md` — pattern lessons (the *meta*).
 - `tasks/notes/` — one-off conversation captures that didn't fit a closed-round file (e.g. mid-round framing notes).

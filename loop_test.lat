@@ -1,0 +1,6 @@
+sit ^series est 10.
+pro ^_i in 0..=^series:
+    si ^_i minor quam 5:
+        dic "Eviligo".
+    aliter:
+        dic "Somno".

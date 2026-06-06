@@ -223,8 +223,7 @@ pub enum MarainError {
 
 ### 5.5 Forward hooks
 
-- **rustc / cargo error forwarding (driver, Round 7).** Per PRD §5, rustc errors are forwarded verbatim in v0.1, not mapped back to Marain spans. The driver's error type will hold an opaque output string — *not* parsed into structured diagnostics. Pinned for Round 7.
-- **Stage 2 grammar diagnostics.** A future `GrammarError` joins `MarainError` via the same `From` pattern; the `Diagnostic` output is unchanged. No v0.1 work.
+Backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) — rustc→Marain error back-mapping (§6) and a future Stage 2 `GrammarError` (§5). Both follow the existing `From` → `Diagnostic` pattern, so the error-model shape is unchanged; no v0.1 work.
 
 ## 6. Lexer
 
@@ -409,9 +408,7 @@ All four R5 files land well under the 500-LOC target. The plausible future press
 
 ### 7.8 Forward hooks
 
-- **Inflection content (Stage 2).** Adding fields to `Inflection` extends the AST without restructuring; consumers that ignore inflection (e.g. the Stage 1 emitter) keep compiling.
-- **Lowering pass between parser and emitter (Stage 2).** When Stage 2's free-word-order parser yields a richer tree that needs reduction to Stage 1 shape for emission, the `parse() -> Module -> emit()` seam is where the pass interposes. `Module` becomes the *output* of lowering rather than the *output* of parsing.
-- **Statement-position vs. expression-position macros.** R5 only models macros at statement position (`MacroCallStmt`). If macros need to appear inside expressions later (e.g. `sit ^x est forma "salve {nomen}".`), a `MacroCallExpr` variant joins `Expr`. The `MacroCallStmt` / `MacroCallExpr` split keeps statement-only forms (currently all of them) honest at the type level.
+Backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) — inflection content (θ) and the parser→emitter lowering pass (§5); expression-position macros `MacroCallExpr` (§1). Each is an additive AST/seam change: extending `Inflection`, interposing lowering at the `parse() -> Module -> emit()` seam, or adding an `Expr::MacroCall` variant — consumers that ignore the new shape keep compiling.
 
 ## 8. Codegen & Cargo Shim
 
@@ -538,10 +535,9 @@ Both R6 files comfortably under the 500-LOC target. The plausible future pressur
 
 ### 8.10 Forward hooks
 
-- **(γ) Variabile runtime injection.** Pinned. Plan: when Variabile literals enter the language (Stage 2 territory per PRD §4.6), `shim.rs` grows a third writer that emits a vendored `src/variabile.rs` module and `emit.rs` prepends `mod variabile; use variabile::Variabile;` to `main.rs`. The Variabile source lives in `marain-core::shim` as a static string (no separate crate, per PRD §9 self-supporting).
-- **Multi-statement function bodies.** R6's `emit` puts every statement at depth 1 (inside `fn main`). When `functio` declarations land, the depth tracker becomes per-block; `emit_stmt` takes an `indent_level` parameter.
-- **Rust-error span back-mapping.** PRD §5 defers this. R6 currently passes the cargo output through verbatim (R7 driver job). When back-mapping lands, it operates on cargo's output text using the source-span comments the emitter could choose to inject; no R6 architectural change required, just an extra emission pass that interleaves `// span N:M-N:M` comments alongside each emitted statement.
-- **Workspace inheritance.** ~~Pinned for when shims co-locate with source.~~ **RESOLVED** during R6 after the project-local test scratch (`.scratch/` under workspace root) caused cargo to reject shims as non-members of the outer workspace. `render_cargo_toml` now emits an empty `[workspace]` table unconditionally; the shim opts out of any enclosing workspace regardless of where it sits. XDG-located shims (R7's default) don't need this, but emitting it costs nothing and makes the shim location-agnostic.
+Backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) — `Variabile` runtime injection (γ, §3; vendored `src/variabile.rs` emitted by `shim.rs` + a `mod variabile;` prepend, source as a static string per the self-supporting constraint) and rustc-error span back-mapping (§6; an extra emission pass interleaving `// span` comments, no architectural change here).
+
+Resolved here: **multi-statement function bodies** — `emit_stmt` gained the per-block `indent_level` parameter (R10/§13). **Workspace inheritance** — `render_cargo_toml` emits an empty `[workspace]` table unconditionally (R6), so a shim opts out of any enclosing workspace regardless of location.
 
 ## 9. CLI & Driver
 
@@ -633,10 +629,9 @@ All five files under the 500-LOC target at Round 7 close. The plausible future p
 
 ### 9.9 Forward hooks
 
-- **`marain check` subcommand (PRD §6, post-v0.1).** Lex + parse + name-resolve without invoking rustc. Adds one variant to `args::Command` and one arm to `driver::dispatch`; no other architectural movement.
-- **`marain install` subcommand (ARCHITECTURE.md §3.1, deferred).** Would drop a user-program symlink at `~/.local/bin/<name>`. Adds one variant to `args::Command`; introduces `~/.local/bin` to the path table.
-- **Rustc-error span back-mapping (PRD §5).** Currently the driver lets cargo's stderr pass through verbatim. When back-mapping lands, the driver gains a third rendering shape (parse cargo's structured output, look up the comment-injected Marain spans, render through `Diagnostic`). No R7 architectural change anticipates this directly; the seam will live alongside `DriverError::Cargo`.
-- **Binary-level e2e (R8).** Tests will spawn the `marain` binary via `Command::new(env!("CARGO_BIN_EXE_marain"))`, asserting on stdout / stderr / exit code. The R7-level e2e (`marain-core/tests/e2e_hello_world.rs`) exercises the library pipeline; the R8 expansion proves the user-facing path automatically.
+Backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) §6 — `marain check` and `marain install` subcommands (each = one `args::Command` variant + one `driver::dispatch` arm) and rustc-error span back-mapping (a third `Diagnostic`-rendering shape alongside `DriverError::Cargo`).
+
+Resolved here: **binary-level e2e** (R8 — `cli_e2e.rs` spawns the `marain` binary via `env!("CARGO_BIN_EXE_marain")`, asserting stdout / stderr / exit code).
 
 ## 10. Testing Harness
 
@@ -741,19 +736,21 @@ All R8 files comfortably under the 500-LOC target. The plausible future pressure
 
 ### 10.7 Forward hooks
 
-- **`marain check` coverage.** When the subcommand lands, add a `cli_e2e.rs` test asserting it exits 0 on a clean source and exits 1 on a bad source — without invoking cargo.
+Feature backlog lives in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md); the notes below are test-harness-specific seams (not features), retained here.
+
+- **`marain check` coverage.** When the subcommand lands (ROADMAP §6), add a `cli_e2e.rs` test asserting it exits 0 on a clean source and exits 1 on a bad source — without invoking cargo.
 - **Per-phase token / AST golden fixtures.** Could add `tests/fixtures/tokens/` (`.lat` → `.expected.tokens`) and `tests/fixtures/ast/` (`.lat` → `.expected.ast`) to catch drift at the lex and parse layers separately. Deferred until a real bug demonstrates the need; the current emit-golden coverage already catches most upstream regressions transitively.
 - **Performance regression tests.** Not in scope for v0.1. When the Stage 2 parser lands and parser cost becomes nontrivial, a `tests/perf/` directory with `criterion`-style benchmarks (pinned per N-1 / 30-day rule) is the natural extension.
 - **Stage 2 `(lemma, inflection)` golden fixtures.** When Stage 2 lands, the existing fixtures stay (Stage-1-mode regression coverage) and a sibling `tests/fixtures/stage2/` houses inflected-form fixtures. The harness pattern (paired files + `MARAIN_UPDATE_GOLDENS=1`) carries over unchanged.
 
 ## 11. Stage 2 Forward Hooks
 
-Live items accreted across rounds. Constraints on v0.x design choices, not v0.x work.
+Stage 2 (full case/conjugation grammar, free word order, sidecar `.latin`, LSP) is a milestone tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) §5, gated by PRD open questions S2-1…S2-7. The entries below are the **v0.x design constraints** those choices must not foreclose — seams, not scheduled work:
 
-- **(ζ) Cross-file Stage 2 diagnostics.** The `SourceMap`-as-arg pattern from §4 continues to work when Stage 2 acquires multi-file grammar contexts (sidecar `.latin` references). No v0.x work required.
-- **(θ) Stage 2 `(lemma, inflection)` tokens.** Stage 2 grows an optional inflection slot on `PlainIdent` / `SigiledIdent` token variants. Backward-compatible field addition; downstream consumers that ignore inflection continue to work.
-- **`marain-lsp` crate seam.** The workspace is ready for a third member crate without restructuring; `marain-core` is the dependency target.
-- **`Variabile` runtime injection (γ).** Vendored support module emitted verbatim into the generated shim. Pinned for when `Variabile` literals enter the language (post-v0.2).
+- **(ζ) Cross-file diagnostics.** The `SourceMap`-as-arg pattern (§4) already supports multi-file grammar contexts (sidecar `.latin` references).
+- **(θ) `(lemma, inflection)` tokens.** A backward-compatible optional inflection slot on `PlainIdent` / `SigiledIdent` token variants; consumers that ignore it keep compiling.
+- **`marain-lsp` crate seam.** The workspace can take a third member crate without restructuring; `marain-core` is the dependency target.
+- **`Variabile` injection (γ).** Vendored support module emitted into the shim (mechanics in ROADMAP §3).
 
 Resolved carry-overs: α (R5 / §7.5), η (R9 / §12).
 
@@ -820,9 +817,9 @@ All R9 files comfortably under target. The plausible future pressure site is `le
 
 ### 12.8 Forward hooks
 
-- **Block-comment activation (v0.3+).** When block comments land, the `Some(b'*')` arm in the `/` dispatcher swaps from "return error" to "invoke `comments::scan_block_comment`"; `BlockCommentsDeferred` retires. Nesting and termination semantics are a v0.3 decision; PRD amendment is the gating step.
-- **Doc comments (`///`).** Not committed (PRD §4.12). If a doc story lands post-v1, comment dispatch grows three-byte lookahead. Mechanical extension.
-- **Range tokens (R14).** `peek_at` added in this round will be reused by the eventual `..` / `..=` lexing dispatch (R14 needs to distinguish `..` from `..=`).
+Backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) §1 — block-comment activation (the `Some(b'*')` arm swaps from "return error" to a `scan_block_comment` call; `BlockCommentsDeferred` retires) and doc comments `///` (a three-byte-lookahead extension, uncommitted).
+
+Resolved here: **range tokens** — the `peek_at` lookahead added this round backs the `..` / `..=` dispatch shipped in R14 (§16).
 
 ## 13. Block Parsing + `si`
 
@@ -904,9 +901,7 @@ All R10 modifications land well under the 500-LOC target. The plausible future p
 
 ### 13.8 Forward hooks
 
-- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })` — PRD §4.11.4 escape hatch for "I need a block here but no behavior." `parse_block` already compatible: `nihil.` is a real statement that produces an `Indent`-then-`Nihil`-then-`Dedent` stream.
-
-Resolved in later rounds: `aliter` chain, `dum` / `semper` / `interrumpe.` / `continua.`, R10 condition typing (all R11+R12 / §14); `functio` body block (R13 / §15).
+All hooks this round have since shipped. Resolved in later rounds: `aliter` chain, `dum` / `semper` / `interrumpe.` / `continua.`, R10 condition typing (all R11+R12 / §14); `functio` body block (R13 / §15); `nihil.` (R15 / §16). The open backlog lives in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md).
 
 ## 14. Operator Expressions + Control Flow
 
@@ -1113,27 +1108,9 @@ statements, expressions).
 
 ### 14.8 Forward hooks
 
-- **`pro` + range tokens (R14+R15).** `parse_for` will mirror `parse_while`
-  shape with a `<sigiled-binding> in <iterable>` head. Range expressions
-  `a..b` / `a..=b` slot into the expression cascade at a new level below
-  logical-or (`..` is Rust's lowest infix precedence). New lexer tokens
-  `DotDot` / `DotDotEq` arrive in R14; `peek_kind_at` reused for the
-  `..` / `..=` disambiguation.
-- **`nihil.` (R14+R15).** Becomes `Stmt::Nihil(NihilStmt { span })`. PRD
-  §4.11.4 promises this as the "I need a block here but no behavior" escape
-  hatch. `parse_block` is already compatible — `nihil.` is a real statement,
-  so it produces an `Indent`-then-`Nihil`-then-`Dedent` stream the existing
-  loop handles uniformly.
-- **Labeled `break 'name` / `continue 'name`.** Out of v0.2 scope (TODO.md
-  sub-decision #7). When added, `BreakStmt` / `ContinueStmt` grow an
-  `Option<Ident>` field for the label name.
-- **`break <expr>` as loop-value-from-break.** Not in v0.2 scope. When
-  added, `BreakStmt` grows an `Option<Expr>` field.
-- **Op-name standardization (Stage 2).** `BinOp` variant names are spelled
-  at the lemma level (`DivisusPer`, `MinorQuam`, etc.); adding inflection
-  metadata would parallel the carry-over α pattern on identifier nodes.
+Open backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md): labeled `break 'name` / `continue 'name` and `break <expr>` (§1; each grows an `Option<Ident>` / `Option<Expr>` field on the stmt); op-name inflection metadata (§5; parallels the carry-over α pattern on `BinOp` variants).
 
-Resolved in R13: `functio` declaration block (§15).
+Resolved in later rounds: `functio` declaration block (R13 / §15); `pro` + range tokens (`DotDot` / `DotDotEq`) and `nihil.` (R14+R15 / §16).
 
 ## 15. Function Declarations + Calls
 
@@ -1387,34 +1364,9 @@ justifications per CLAUDE.md.
 
 ### 15.8 Forward hooks
 
-- **`pro` + range tokens (R14+R15).** Function bodies are now first-class
-  block contexts, so `pro <binding> in <iterable> :` slots into the same
-  parse_block mechanism. New lexer tokens `DotDot` / `DotDotEq` arrive in
-  R14.
-- **`nihil.` (R14+R15).** Per PRD §4.11.4. `parse_block` is already
-  compatible: `nihil.` is a real statement that produces an Indent-then-
-  Nihil-then-Dedent stream the existing loop handles.
-- **`structura` / `enumeratio` (R16+).** When these land, `TypeRef`'s
-  forward seam pays off: user-defined types pass through verbatim today
-  and become real Rust struct/enum names when the parser learns those
-  forms. The `emit_type_ref` translation table adds entries as needed; no
-  table-fork required.
-- **Generics activation (v0.3+).** The `LexError::GenericsLookalike`
-  variant retires the moment generic syntax becomes legal — lexer arm
-  changes from "return error" to "emit `<` token", parser arm in
-  `parse_type_ref` consumes `<T, U>` into `TypeRef.params`. The Stage 1
-  shape is forward-compatible.
-- **Labeled `break 'name` / `continue 'name` and `break <expr>`.** Still
-  deferred per R12 sub-decision #7. Function bodies don't change the
-  calculus.
-- **Trailing-expression returns.** Rust supports `fn foo() -> i32 { 42 }`
-  with no explicit `return`. Marain's period-terminator design (§4.8)
-  makes the surface awkward (would need an "expression-statement at
-  block tail position" rule); deferred indefinitely unless a real use
-  case appears.
-- **Closures.** Deferred per PRD §4.11.6. When they land, `Expr::Call`
-  generalizes — callee becomes an `Expr` rather than an `Ident`. The
-  `args: Vec<Expr>` field is already shaped to absorb the change.
+Open backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md): `structura` / `enumeratio` (§2 — the `TypeRef` seam + `emit_type_ref` table absorb them, no fork); generics activation (§1 — `LexError::GenericsLookalike` retires, `parse_type_ref` consumes `<T, U>` into `TypeRef.params`); labeled `break`/`continue`, `break <expr>`, trailing-expression returns, and closures (§1 — closures generalize `Expr::Call`'s callee from `Ident` to `Expr`; the `args: Vec<Expr>` field is already shaped to absorb it).
+
+Resolved in R14+R15 (§16): `pro` + range tokens and `nihil.` — function bodies as first-class block contexts let both drop into the existing `parse_block` mechanism.
 
 ## 16. Loops + Ranges + `nihil`
 
@@ -1573,16 +1525,4 @@ status with unchanged justifications.
 
 ### 16.8 Forward hooks
 
-- **Open-ended ranges (`..b`, `a..`, `..`, `..=b`).** `RangeExpr`'s
-  `Option` fields already model them; activation is a `parse_range` change
-  (allow a missing lhs before `..`, and a missing rhs after) plus the emit
-  arm, which already guards both sides with `if let Some`. No AST reshape.
-- **`pro` over collection iterators.** Today any expression parses as the
-  iterable; once `structura` / collection literals land, `pro ^x in ^xs :`
-  over a real collection typechecks without parser changes.
-- **Stepped / reverse iteration.** No direct Rust `..` analogue; would
-  lower to `.step_by(n)` / `.rev()` method calls once method-call syntax
-  exists. Deferred until then.
-- **`nihil` as an expression.** Today `nihil` is statement-only. If a
-  unit-valued expression position ever needs it, `Expr::Nihil` would mirror
-  `Stmt::Nihil`; no current use case.
+Open backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) §1: open-ended ranges (`..b` / `a..` / `..` / `..=b` — `RangeExpr`'s `Option` fields already model them, so activation is a `parse_range` change and the emit arm already guards both sides with `if let Some`); stepped / reverse iteration (lowers to `.step_by` / `.rev` once method-call syntax exists); `nihil` as an expression (`Expr::Nihil` mirroring `Stmt::Nihil`). `pro` over real collection iterators lands for free once collection literals exist (§2) — any expression already parses as the iterable.
