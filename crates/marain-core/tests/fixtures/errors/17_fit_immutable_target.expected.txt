@@ -1,0 +1,1 @@
+17_fit_immutable_target.lat:1:1: error: cannot reassign immutable binding `^x`; declare it `@x` to mutate (PRD §4.5)

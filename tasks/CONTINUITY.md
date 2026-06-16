@@ -59,21 +59,23 @@ the only warning Marain currently emits. Owner's call on ordering.
 end to end. **461 tests.** Only external dep is `clap` (pinned). Pipeline:
 `.lat → lexer → tokens → parser → AST → emit → Rust → shim (cargo) → run`.
 
-## Uncommitted State (owner will commit)
+## Commit State — ⚠️ R16 PARTIALLY committed (5 files still untracked)
 
-Tree was on `566e257` at session start. **Not yet committed** — owner said they'd
-commit the pre-R16 docs first, then we started; R16 added more on top. Full
-uncommitted set now spans:
-- **Source (R16):** `ast.rs`, `ast_tests.rs`, `parser/grammar.rs`, `parser/error.rs`,
-  `parser/mod_tests.rs`, `emit.rs`, `emit_tests.rs`.
-- **New fixtures:** `tests/fixtures/27_fit_reassignment.{lat,expected.rs}`,
-  `tests/fixtures/errors/17_fit_immutable_target.{lat,expected.txt}`.
-- **Docs:** `ARCHITECTURE.md` (§17 + §0), `PRD.md` (line-115 footnote),
-  `tasks/DECISIONS.md` (index row), `tasks/decisions/R16_fit_reassignment.md` (new),
-  `tasks/ROADMAP.md` (§1 shipped), `tasks/TODO.md` (Task 0 ✅ + Task 2 superseded note),
-  `tasks/CONTINUITY.md` (this), `tasks/LESSONS.md` (pre-existing M).
+R16 tracked edits are committed and **pushed** as `2eb497a` ("Assignment and
+reassignment implementation 'fit'"), on `main`, in sync with `origin/main`.
 
-Suggest committing R16 as one coherent feat commit (source + fixtures + doc archive).
+**BUT 5 new files were NOT in that commit — still untracked, owner must `git add`:**
+- `crates/marain-core/tests/fixtures/27_fit_reassignment.lat`
+- `crates/marain-core/tests/fixtures/27_fit_reassignment.expected.rs`
+- `crates/marain-core/tests/fixtures/errors/17_fit_immutable_target.lat`
+- `crates/marain-core/tests/fixtures/errors/17_fit_immutable_target.expected.txt`
+- `tasks/decisions/R16_fit_reassignment.md`
+
+Without these, a fresh checkout loses the `fit` golden fixtures and the decision
+archive that ARCH §17 / DECISIONS index link to. `2eb497a` is pushed, so this is a
+**follow-up commit** (not an amend). **Owner handles all git/CI** — do not stage or
+commit; just remind. (The R16 doc/source edits in `2eb497a` are safe and complete;
+only these 5 additions are outstanding.)
 
 ## Open Decisions
 
@@ -89,7 +91,9 @@ All Stage-2 / post-v0.2, unchanged: **γ (Variabile)** plain roadmap item (ROADM
 
 ## When You Resume
 
-1. **Commit check** — confirm owner committed the R16 changeset (above) before new work.
+1. **Commit check** — R16 is committed as `2eb497a` (pushed), but **5 files are still
+   untracked** (see "Commit State" above). If `git status` still shows them, remind the
+   owner — do NOT `git add`/commit yourself (owner handles all git/CI).
 2. **Pick a round** from "Immediate Next Action"; enter plan mode to frame it.
 3. **Mind the `emit.rs` 500-LOC ceiling** before adding any emit arm.
 4. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code;
