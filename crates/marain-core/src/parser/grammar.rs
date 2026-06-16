@@ -10,13 +10,13 @@
 //! word order (PRD §4.2).
 
 use crate::ast::{
-    Block, BreakStmt, CallStmt, ContinueStmt, ElseBranch, ForStmt, FunctionStmt, Ident, IfStmt,
-    LetStmt, LoopStmt, MacroCallStmt, Module, NihilStmt, Param, ReturnStmt, SigiledIdent, Stmt,
-    TypeRef, WhileStmt,
+    AssignStmt, Block, BreakStmt, CallStmt, ContinueStmt, ElseBranch, ForStmt, FunctionStmt, Ident,
+    IfStmt, LetStmt, LoopStmt, MacroCallStmt, Module, NihilStmt, Param, ReturnStmt, SigiledIdent,
+    Stmt, TypeRef, WhileStmt,
 };
 use crate::lexer::keywords::Keyword;
 use crate::span::Span;
-use crate::token::TokenKind;
+use crate::token::{Sigil, TokenKind};
 
 use super::Parser;
 use super::error::ParseError;
@@ -48,6 +48,11 @@ fn parse_stmt(p: &mut Parser) -> Result<Stmt, ParseError> {
         TokenKind::Keyword(Keyword::Functio) => parse_function(p).map(Stmt::Function),
         TokenKind::Keyword(Keyword::Redde) => parse_return(p).map(Stmt::Return),
         TokenKind::Keyword(k) if is_no_punct_macro(*k) => parse_macro_call(p).map(Stmt::MacroCall),
+        // `@x fit <expr>.` — reassignment. A statement opening with a sigiled
+        // ident is otherwise an error (only keywords and `PlainIdent(` start
+        // statements), so this arm is unambiguous. The `@`-vs-`^` target check
+        // lives in parse_assign.
+        TokenKind::SigiledIdent { .. } => parse_assign(p).map(Stmt::Assign),
         // `<name>(...)` at statement position — call as side-effect statement.
         // Sigiled idents are rejected here: a bare `^x.` has no observable
         // effect, so it would only be confusion.
@@ -78,6 +83,29 @@ fn parse_let(p: &mut Parser) -> Result<LetStmt, ParseError> {
         name,
         value,
         span: sit_span.join(period_span),
+    })
+}
+
+fn parse_assign(p: &mut Parser) -> Result<AssignStmt, ParseError> {
+    let target = parse_sigiled_ident(p)?;
+    // PRD §4.5: the sigil marks mutability at every use site, so a reassignment
+    // target must carry `@`. Rejecting a `^` target here surfaces the
+    // contradiction at the Marain level (locked decision 2026-06-16) rather than
+    // deferring to a rustc "cannot assign twice to immutable" message — no span
+    // back-mapping exists yet. Purely syntactic: no symbol table needed.
+    if !matches!(target.sigil, Sigil::Mutable) {
+        return Err(ParseError::ImmutableReassignmentTarget {
+            name: target.name,
+            span: target.span,
+        });
+    }
+    expect_keyword(p, Keyword::Fit, "keyword `fit`")?;
+    let value = parse_expr(p)?;
+    let period_span = expect_kind(p, &TokenKind::Period, "`.`")?;
+    Ok(AssignStmt {
+        span: target.span.join(period_span),
+        target,
+        value,
     })
 }
 

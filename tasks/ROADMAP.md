@@ -42,8 +42,8 @@ These were surfaced during manual testing and live in TODO.md, not here, but the
 intersect the backlog so they're cross-referenced:
 
 - **TODO Task 1** — no string concatenation/interpolation → resolved by **f-strings** (§4 below).
-- **TODO Task 2** — `fit` reassignment specced but unimplemented (§1 below; in-spec, highest-priority gap).
-- **TODO Task 3** — `unused_parens` in emitted Rust (an emit-quality fix, not a roadmap feature).
+- ~~**TODO Task 0/2** — `fit` reassignment~~ → **SHIPPED R16** (§1 below); Task 2 was the original gap analysis, Task 0 the implementation spec.
+- **TODO Task 3** — `unused_parens` in emitted Rust (an emit-quality fix, not a roadmap feature). Now also fires on `fit` assignment RHS (`x = (x + 1i64);`), as R16 confirmed.
 
 ---
 
@@ -58,11 +58,11 @@ intersect the backlog so they're cross-referenced:
 | **Visibility** | `pub` → proposed `publicus` | PRD §4.11.6 | No module boundaries in v0.2 to gate against; lands with the module system (§2). |
 | **Block comments** | `/* */` | PRD §4.12, ARCH §12.8 | Reserved; lexer errors via `LexError::BlockCommentsDeferred`. Nesting + termination semantics TBD. |
 
-### Reassignment (`fit`) — in-spec, highest-priority gap
+### Reassignment (`fit`) — SHIPPED R16 (2026-06-16)
 
 | Item | What | Source | Notes |
 |------|------|--------|-------|
-| **`fit` reassignment** | `@x fit @x plus 1.` — mutate a declared mutable binding | PRD §4.4 (§94/§115), lexicon (`fit` → `=` reassign), **TODO Task 2** | Specced and lexed (`Keyword::Fit`) but never parsed/emitted — no `parse_stmt` arm, no `Stmt::Assign`. Skipped across R9–R15. Small, in-spec (no PRD amendment): add `Stmt::Assign { target: SigiledIdent, value: Expr }`, dispatch on `Keyword::Fit`, emit `target = value;`. Unblocks all mutation/increment code. |
+| ~~**`fit` reassignment**~~ | `@x fit @x plus 1.` — mutate a declared mutable binding | PRD §4.4, lexicon (`fit` → `=` reassign), TODO Task 0 | **Done (R16).** `Stmt::Assign(AssignStmt { target, value, span })`, dispatch on a leading `SigiledIdent`, emit `target = value;` (no `mut`). Target must carry `@` (a `^` target is `ImmutableReassignmentTarget`). See ARCH §17 / `tasks/decisions/R16_fit_reassignment.md`. Unblocked all mutation/increment code. |
 
 ### Near-term forward hooks (control flow & expressions)
 

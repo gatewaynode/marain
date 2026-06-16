@@ -1,82 +1,106 @@
-# Continuity — R14+R15 closed; v0.2 implementation rounds complete
+# Continuity — R16 (`fit` reassignment) shipped; choose the next round
 
-_Rewritten 2026-05-31 (post-R14+R15, on crash-recovery resume). Captures: a console crash interrupted R14+R15 after code+tests+fixtures landed but before round-close; on resume the tree was gate-clean and coherent, so this session was pure round-close (sentrux, ARCHITECTURE §16, decisions file, TODO, this rewrite). The git commit is the user's to make. Rewrite on next use._
+_Rewritten 2026-06-16 (R16 close). Last session scoped Task 0; this session
+**implemented and closed it as R16**. Code + tests + docs all landed and verified.
+Next session: pick the next round (candidates below). Rewrite on next use._
 
-## Where We Are
+## What Just Shipped — R16 (`fit` reassignment)
 
-**R14+R15 (`pro` loops + range tokens + `nihil`) is closed.** With it, **every round in the `## v0.2 implementation plan` (R9–R15) is checked off** — the planned v0.2 language surface is implemented end-to-end (lexer → parser → AST → emit → goldens). All gates green: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test --all` (**450 tests**).
+The binding lifecycle's missing half is now complete: a declared mutable binding
+can be re-bound. `@x fit <expr> .` parses and emits `x = <expr>;`.
 
-**This session was crash-recovery + round-close, not implementation.** Sequence:
+- **Five edit sites landed** (all green): `ast.rs` (`Stmt::Assign(AssignStmt)`),
+  `parser/grammar.rs` (`parse_assign` + `SigiledIdent` dispatch), `parser/error.rs`
+  (`ImmutableReassignmentTarget`), `emit.rs` (`emit_assign`, **no `mut`**), plus
+  tests across `ast_tests.rs` / `mod_tests.rs` / `emit_tests.rs` and 2 golden
+  fixtures (`27_fit_reassignment`, `errors/17_fit_immutable_target`).
+- **Locked decision honored:** `@` target required; `^` target is a parse error.
+- **Verified:** `cargo fmt --all` / `clippy --all-targets -D warnings` /
+  `test --all` all clean (**461 tests**, +11). Sentrux stable (signal 7063 → 7057,
+  improved; 0 violations). **e2e:** a `pro`/`fit` accumulator run through
+  `marain run` prints `15` — emitted Rust compiles and executes.
+- **Archived:** ARCH §17 (+ §0 reading-order row), `tasks/decisions/R16_fit_reassignment.md`
+  (+ DECISIONS index row), PRD line-115 footnote, ROADMAP §1 row marked shipped.
 
-1. **`/catchup`** surfaced a discrepancy: CONTINUITY described R13-close state, but the working tree held uncommitted R14 changes. The prior session had crashed mid-R14.
-2. **Recovery review.** Read the full R14 diff feature-by-feature (token/lexer/ast/parser/emit) + all 7 new fixtures. Ran the gates. Verdict: **R14+R15 implementation was complete and intact** — the crash hit after code+tests+fixtures landed but before round-close docs/commit. No repair needed. (Goldens passed because the golden walker auto-discovers the untracked fixtures.)
-3. **Round-close on resume:** sentrux scan + check_rules + dsm; ARCHITECTURE §16 written (mirrors §15's 8-subsection shape); `tasks/decisions/R14_15_pro_ranges_nihil.md` written; DECISIONS index + TODO (checkbox + Completed entry) updated; this rewrite.
-4. **Commit deferred to the user** (their explicit call). A brief commit message was provided in chat.
+## Immediate Next Action — frame the next round
 
-## What R14+R15 Landed
+No round is in flight. v0.2 is now genuinely feature-complete (R9–R16). Candidates,
+roughly ordered by leverage:
 
-- **Lexer.** `TokenKind::DotDot` / `DotDotEq`; `b'.'` dispatch peeks one/two bytes (single `.` stays `Period`; greedy munch — `...` → `DotDot`+`Period`).
-- **AST.** `Expr::Range(RangeExpr)` (`Option<Box<Expr>>` start/end reserve open-ended forms; v0.2 emits only bounded), `Stmt::For(ForStmt)`, `Stmt::Nihil(NihilStmt)`.
-- **Parser.** `parse_range` at lowest infix precedence (`parse_expr` → `parse_range` → `parse_or`; operands are `parse_or` so chained ranges error naturally); `parse_for` (dispatch `Keyword::Pro`), `parse_nihil` (dispatch `Keyword::Nihil`). No new `ParseError` variants. `pro`/`in`/`nihil` were already in the R4 keyword table.
-- **Emit.** `emit_for` (`@`→`mut` sigil-drop, indented body); range arm (`..` / `..=`, no outer paren-wrap); `Stmt::Nihil` → `();`.
-- **Tests.** +35 (415 → 450). 4 emit fixtures (23–26), 3 error fixtures (errors/14–16).
+1. **v0.2 done-line e2e + commit** (ROADMAP §6, near-term, NOT v0.3-gated). The
+   goldens are string-compare only — they never compile their output. A test that
+   runs emitted control-flow/`fit` Rust through `cargo build -D warnings` would have
+   caught Task 3 and guards future emit regressions. **Pairs naturally with Task 3.**
+2. **Task 3 — `unused_parens`** (`tasks/TODO.md`). Paren-everywhere emit (ARCH §14)
+   warns on `if`/`while` conds, `let`/`redde` values, and — confirmed in R16 — `fit`
+   assignment RHS (`x = (x + 1i64);`). Two fix options in TODO: (a) precedence-aware
+   emit [elegant, reverses §14], (b) outermost-strip [surgical]. Either regenerates
+   all goldens via `MARAIN_UPDATE_GOLDENS=1`.
+3. **v0.3 framing** — type system / user-defined types (ROADMAP §2), f-strings
+   (Task 1 / ROADMAP §4), or `Variabile` (γ). Unframed; needs a PRD pass first.
 
-### Sentrux at close
+Recommendation: **#1 + #2 together** — small, closes a real testing gap, and clears
+the only warning Marain currently emits. Owner's call on ordering.
 
-Live session baseline was lost to the crash; compared against recorded R13-close signal (7073).
+## Watch-outs (carry into next round)
 
-| Metric | R13 close | R14+R15 close |
-|--------|-----------|---------------|
-| Quality signal | 7073 | 7060 (Δ −13) |
-| DSM above_diagonal | 0 | 0 |
-| Cycles | 0 | 0 |
-| import_edges | 38 | 41 (+3) |
-| Rule violations | 0 | 0 (4/4 pass) |
+- **`emit.rs` is at exactly 500 LOC** (the target ceiling). The NEXT emit-arm
+  addition must split it (e.g. `emit/{stmt,expr}.rs`) or carry a module-doc
+  pressure-release justification. This bites whoever does Task 3 or any v0.3 emit
+  work. Flagged in ARCH §17.2 / §17.7.
+- Test files already over target with justifications: `parser/mod_tests.rs` (~1490),
+  `emit_tests.rs` (~830), `lexer/mod.rs` (749). Sibling-split pattern (`#[path]`)
+  is the clean move if any grows further.
 
-Δ −13 tracks genuinely-added surface area (2 tokens, 3 AST nodes, 3 parser fns, 3 emit arms) with **no offsetting file split this round** — the R13-close pattern (splits improved the signal) didn't apply because nothing crossed 500 LOC.
+## Where We Are (state)
 
-## File State
+**Marain is a single Latin-core language** — multi-frontend initiative rejected
+2026-06-16 (ADR-0001). v0.2 feature-complete R9–R16; lexer→parser→AST→emit→goldens
+end to end. **461 tests.** Only external dep is `clap` (pinned). Pipeline:
+`.lat → lexer → tokens → parser → AST → emit → Rust → shim (cargo) → run`.
 
-### Uncommitted (the R14+R15 change set — user to commit)
+## Uncommitted State (owner will commit)
 
-Modified: `token.rs`, `lexer/mod.rs`, `ast.rs`, `ast_tests.rs`, `parser/expressions.rs`, `parser/grammar.rs`, `parser/mod_tests.rs`, `emit.rs`, `emit_tests.rs`.
-New fixtures: `tests/fixtures/23..26_*` (+`.expected.rs`), `tests/fixtures/errors/14..16_*` (+`.expected.txt`).
-Doc updates this session: `ARCHITECTURE.md` (§0 row + §16), `tasks/decisions/R14_15_pro_ranges_nihil.md` (new), `tasks/DECISIONS.md`, `tasks/TODO.md`, `tasks/CONTINUITY.md`.
+Tree was on `566e257` at session start. **Not yet committed** — owner said they'd
+commit the pre-R16 docs first, then we started; R16 added more on top. Full
+uncommitted set now spans:
+- **Source (R16):** `ast.rs`, `ast_tests.rs`, `parser/grammar.rs`, `parser/error.rs`,
+  `parser/mod_tests.rs`, `emit.rs`, `emit_tests.rs`.
+- **New fixtures:** `tests/fixtures/27_fit_reassignment.{lat,expected.rs}`,
+  `tests/fixtures/errors/17_fit_immutable_target.{lat,expected.txt}`.
+- **Docs:** `ARCHITECTURE.md` (§17 + §0), `PRD.md` (line-115 footnote),
+  `tasks/DECISIONS.md` (index row), `tasks/decisions/R16_fit_reassignment.md` (new),
+  `tasks/ROADMAP.md` (§1 shipped), `tasks/TODO.md` (Task 0 ✅ + Task 2 superseded note),
+  `tasks/CONTINUITY.md` (this), `tasks/LESSONS.md` (pre-existing M).
 
-### Production-side LOC at close (all under 500 target)
-
-`token.rs` 153, `ast.rs` 381, `parser/grammar.rs` 383, `parser/expressions.rs` 292, `emit.rs` 485. Test siblings in pressure-release (justified): `parser/mod_tests.rs` 1407, `emit_tests.rs` 793, `lexer/mod.rs` 749, `ast_tests.rs` 348.
-
-## What's Next (next session's entry point)
-
-**No planned v0.2 round remains** — R9–R15 are all closed. Plausible next moves, in rough priority:
-
-1. **Commit R14+R15** (user said they'd handle it). If not yet done, that's step one.
-2. **v0.2 wrap-up assessment.** Is v0.2 the full intended surface, or are there gaps vs PRD §4.11? Check PRD for any v0.2-scoped feature not yet rounded (e.g. `structura` / `enumeratio` were tagged R16+ in §16.8 forward hooks — confirm whether they're v0.2 or v0.3). Update README / version if v0.2 is being declared done.
-3. **v0.3 planning.** §16.8 forward hooks name the live seams: open-ended ranges (`RangeExpr` Option fields already model them), generics activation (retires `LexError::GenericsLookalike`), `structura`/`enumeratio` (the `TypeRef` pass-through seam pays off), method-call syntax (unlocks stepped/reverse iteration). Frame the next round from these.
-4. **Self-supporting pass** (per CLAUDE.md "when all major tasks done"): the only external dep is `clap` (pinned). Worth a deliberate review of whether to inline-vendor it.
+Suggest committing R16 as one coherent feat commit (source + fixtures + doc archive).
 
 ## Open Decisions
 
-- **Resolved this round:** `nihil` emit shape → `();` (not `{}`); range arity → bounded-only (`a..b` / `a..=b`), open forms deferred. Both were the recorded recommendations.
-- **None currently blocking.** Next round's framing (v0.3 / structura / generics) is unframed but not urgent.
+- **Next round: UNCHOSEN** (see candidates above).
+- **v0.3 unframed** — frame from `ARCH §16.8`/`§17.8` + `PRD §4.11`/§4.3 when ready.
+- **E1 leak fixes** parked in BACKLOG; only leak 2 (`unreachable!` → `EmitError`) has
+  standalone single-language value.
 
-## Carry-over Concerns (status at close)
+## Carry-over Concerns
 
-Three pinned, all post-v0.2: γ (Variabile runtime injection), ζ (cross-file Stage 2 diagnostics), θ (Stage 2 inflection tokens). Everything else retired (see the R13-close CONTINUITY in git history for the full retirement table). No new concerns opened by R14+R15.
+All Stage-2 / post-v0.2, unchanged: **γ (Variabile)** plain roadmap item (ROADMAP §3);
+**ζ** cross-file Stage-2 diagnostics; **θ** Stage-2 inflection tokens.
 
 ## When You Resume
 
-1. **Check `git log` / `git status` first.** If the R14+R15 commit landed, the tree is clean and you're starting fresh on the "what's next" list above. If not, the change set described under *File State* is still uncommitted.
-2. **Read `tasks/TODO.md`** — the `## v0.2 implementation plan` block is now fully checked; that's the signal there's no queued round. The Completed tail has the R14+R15 detail.
-3. If framing a v0.3 round: read **`ARCHITECTURE.md` §16.8 forward hooks** (the live seams) and the relevant **PRD §4.11** subsections cold. Use **ASCII labels (a/b/c, 1/2/3)** for any framing slate — Greek letters are a context switch for the user (feedback memory).
-4. Per CLAUDE.md round-closing protocol when the next round closes: `fmt`/`clippy`/`test --all`; sentrux `session_start`/`session_end` bracket (and *do* take the `session_start` baseline before code lands this time — the crash this round lost it); ARCHITECTURE section drafted in conversation; TODO check-off + Completed entry; CONTINUITY rewrite.
+1. **Commit check** — confirm owner committed the R16 changeset (above) before new work.
+2. **Pick a round** from "Immediate Next Action"; enter plan mode to frame it.
+3. **Mind the `emit.rs` 500-LOC ceiling** before adding any emit arm.
+4. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code;
+   on close → decisions file + DECISIONS row + ARCH §N.3 + ROADMAP + check off TODO +
+   rewrite this file. Use **ASCII labels (a/b/c)** for any framing slate.
 
 ## Tactical Notes
 
-- Date: 2026-05-31. Project renamed Rubigo → Marain (repo dir still `rubigo`).
-- Lexer keyword count unchanged (R14+R15 added no keywords; `pro`/`in`/`nihil` were in the R4 table).
-- `hello.lat` at repo root (untracked scratchpad) unchanged.
-- `.sentrux/rules.toml`: 4/20 rules mechanically checked under free tier; all pass.
-- `tasks/LESSONS.md` still empty. `tasks/BUGS.md` still empty. No user corrections this session worth a lesson — the recovery review confirmed the prior session's work rather than correcting it.
-- **Crash-recovery lesson worth carrying:** green gates (`fmt`/`clippy`/`test --all` + goldens) on resume are strong evidence an interrupted round's *code* is intact, because a crash mid-edit almost always leaves a non-compiling file. What a crash reliably loses is the *round-close ritual* (docs, sentrux baseline, commit) — so on resume, diff against the last round's CONTINUITY to find what the docs don't yet know.
+- Date 2026-06-16. Project renamed Rubigo → Marain (repo dir still `rubigo`).
+- Doc convention (load-bearing): **ROADMAP = committed, BACKLOG = uncommitted.**
+- Golden harnesses auto-collect fixtures; regenerate with `MARAIN_UPDATE_GOLDENS=1`
+  then eyeball the `.expected.rs`/`.expected.txt` diff.
+- CLI: `marain run <file.lat>` transpiles + executes; `marain build` emits the shim
+  project path. `cargo run -p marain-cli -- run …` during dev.

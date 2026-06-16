@@ -31,6 +31,7 @@ pub struct Module {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
     Let(LetStmt),
+    Assign(AssignStmt),
     MacroCall(MacroCallStmt),
     If(IfStmt),
     While(WhileStmt),
@@ -48,6 +49,7 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Self::Let(s) => s.span,
+            Self::Assign(s) => s.span,
             Self::MacroCall(s) => s.span,
             Self::If(s) => s.span,
             Self::While(s) => s.span,
@@ -66,6 +68,19 @@ impl Stmt {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LetStmt {
     pub name: SigiledIdent,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// `@x fit <expr> .` per PRD §4.4 (reassign copula). Re-binds an
+/// already-declared mutable binding; mirrors [`LetStmt`] minus the `est`
+/// copula. `target` always carries the `@` (mutable) sigil — the parser
+/// rejects a `^` target outright (PRD §4.5: the sigil marks mutability at
+/// every use site). Field and index targets (`@x.y`, `@x[i]`) are out of
+/// scope until method-call / index syntax lands.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssignStmt {
+    pub target: SigiledIdent,
     pub value: Expr,
     pub span: Span,
 }

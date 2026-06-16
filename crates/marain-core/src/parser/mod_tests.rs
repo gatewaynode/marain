@@ -1405,3 +1405,75 @@ fn nihil_missing_period_is_error() {
         other => panic!("expected UnexpectedToken, got {other:?}"),
     }
 }
+
+// --- R16: `fit` reassignment ---
+
+#[test]
+fn fit_reassign_integer_parses() {
+    let m = parse_ok("@x fit 5.\n");
+    assert_eq!(m.items.len(), 1);
+    match &m.items[0] {
+        Stmt::Assign(a) => {
+            assert_eq!(a.target.sigil, Sigil::Mutable);
+            assert_eq!(a.target.name, "x");
+            match &a.value {
+                Expr::IntegerLit(i) => assert_eq!(i.value, 5),
+                other => panic!("expected IntegerLit, got {other:?}"),
+            }
+        }
+        other => panic!("expected Assign, got {other:?}"),
+    }
+}
+
+#[test]
+fn fit_reassign_increment_idiom_parses_binop_value() {
+    // The accumulator idiom `@x fit @x plus 1.` — value is a BinOp over a VarRef.
+    let m = parse_ok("@x fit @x plus 1.\n");
+    match &m.items[0] {
+        Stmt::Assign(a) => {
+            assert_eq!(a.target.name, "x");
+            match &a.value {
+                Expr::BinOp(b) => {
+                    assert!(matches!(b.lhs.as_ref(), Expr::VarRef(_)));
+                    assert!(matches!(b.rhs.as_ref(), Expr::IntegerLit(_)));
+                }
+                other => panic!("expected BinOp, got {other:?}"),
+            }
+        }
+        other => panic!("expected Assign, got {other:?}"),
+    }
+}
+
+#[test]
+fn fit_immutable_target_is_error() {
+    // PRD §4.5: reassigning a `^` (immutable) target is rejected at parse time.
+    let e = parse_err("^x fit 5.\n");
+    match e {
+        ParseError::ImmutableReassignmentTarget { name, .. } => assert_eq!(name, "x"),
+        other => panic!("expected ImmutableReassignmentTarget, got {other:?}"),
+    }
+}
+
+#[test]
+fn fit_missing_period_is_error() {
+    let e = parse_err("@x fit 5\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("`.`"), "got: {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}
+
+#[test]
+fn sigiled_target_with_est_verb_is_error() {
+    // `est` is the initializer copula (`sit ^x est …`), not a reassignment verb.
+    // A sigiled-ident statement dispatches to parse_assign, which expects `fit`.
+    let e = parse_err("@x est 5.\n");
+    match e {
+        ParseError::UnexpectedToken { expected, .. } => {
+            assert!(expected.contains("fit"), "expected label was {expected:?}");
+        }
+        other => panic!("expected UnexpectedToken, got {other:?}"),
+    }
+}

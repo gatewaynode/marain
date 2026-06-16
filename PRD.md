@@ -114,6 +114,8 @@ Marain expresses all of Rust's operators as Latin function words. Symbol-form op
 
 **Assignment vs. equality is disambiguated by verb choice, not by token shape.** `sit ^x est 5` initializes, `^x fit 5` reassigns, `si ^x aequat 5` compares. The `=` / `==` confusion class disappears — at the cost of memorizing which Latin verb carries which sense.
 
+> **Note (R16, 2026-06-16):** the `^x fit 5` above illustrates the *verb contrast* only (`est` vs. `fit` vs. `aequat`); it is not a valid reassignment. Per §4.5 the sigil marks mutability at every use site, so a `fit` target must carry `@` — the canonical reassignment is `@x fit 5`. The implementation rejects a `^` reassignment target at parse time (`ImmutableReassignmentTarget`).
+
 ### 4.5 Identifier Sigils
 
 Every variable reference in Marain carries a single-character sigil that marks mutability. This is a Marain-original convention, not Latin grammar.

@@ -346,3 +346,16 @@ fn nihil_stmt_span_dispatches_through_stmt() {
     let n = Stmt::Nihil(NihilStmt { span: sp(0, 7) });
     assert_eq!(n.span(), sp(0, 7));
 }
+
+#[test]
+fn assign_stmt_span_dispatches_through_stmt() {
+    let a = Stmt::Assign(AssignStmt {
+        target: SigiledIdent::new(Sigil::Mutable, "x".to_string(), sp(0, 2)),
+        value: Expr::IntegerLit(IntegerLit {
+            value: 5,
+            span: sp(7, 8),
+        }),
+        span: sp(0, 9),
+    });
+    assert_eq!(a.span(), sp(0, 9));
+}

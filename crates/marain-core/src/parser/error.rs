@@ -21,6 +21,11 @@ pub enum ParseError {
     /// A type-position identifier did not start with an uppercase letter
     /// (PRD §4.9: types use PascalCase; mismatch is a hard error, not a lint).
     TypePositionRequiresPascalCase { name: String, span: Span },
+    /// A `fit` reassignment targeted an immutable (`^`) binding. PRD §4.5 makes
+    /// the sigil the mutability marker at every use site, so reassigning a `^`
+    /// target is a contradiction caught at parse time (locked decision
+    /// 2026-06-16). `name` is the bare identifier (no sigil).
+    ImmutableReassignmentTarget { name: String, span: Span },
 }
 
 impl ParseError {
@@ -29,7 +34,8 @@ impl ParseError {
             Self::UnexpectedToken { span, .. }
             | Self::ExpectedExpression { span, .. }
             | Self::UnknownStatementStart { span, .. }
-            | Self::TypePositionRequiresPascalCase { span, .. } => *span,
+            | Self::TypePositionRequiresPascalCase { span, .. }
+            | Self::ImmutableReassignmentTarget { span, .. } => *span,
         }
     }
 
@@ -47,6 +53,9 @@ impl ParseError {
             Self::TypePositionRequiresPascalCase { name, .. } => {
                 format!("type names must use PascalCase; got `{name}` (PRD §4.9)")
             }
+            Self::ImmutableReassignmentTarget { name, .. } => format!(
+                "cannot reassign immutable binding `^{name}`; declare it `@{name}` to mutate (PRD §4.5)"
+            ),
         }
     }
 
@@ -116,6 +125,22 @@ mod tests {
         assert!(msg.contains("PascalCase"), "msg: {msg}");
         assert!(msg.contains("sermo"), "msg should quote name: {msg}");
         assert!(msg.contains("PRD §4.9"), "msg should cite PRD: {msg}");
+    }
+
+    #[test]
+    fn immutable_reassignment_target_message() {
+        let e = ParseError::ImmutableReassignmentTarget {
+            name: "x".to_string(),
+            span: sp(),
+        };
+        let msg = e.message();
+        assert!(msg.contains("cannot reassign immutable"), "msg: {msg}");
+        assert!(
+            msg.contains("`^x`"),
+            "msg should show the `^` target: {msg}"
+        );
+        assert!(msg.contains("`@x`"), "msg should suggest `@x`: {msg}");
+        assert!(msg.contains("PRD §4.5"), "msg should cite PRD: {msg}");
     }
 
     #[test]

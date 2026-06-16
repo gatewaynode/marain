@@ -791,3 +791,39 @@ fn nihil_inside_pro_body() {
         "got: {out}"
     );
 }
+
+// --- R16: `fit` reassignment ---
+
+#[test]
+fn fit_reassign_emits_assignment_without_mut() {
+    // Reassignment is a use site, not a binding site: no `mut` is emitted.
+    let out = parse_and_emit("sit @x est 0.\n@x fit 5.\n");
+    assert!(out.contains("let mut x = 0i64;"), "got: {out}");
+    assert!(out.contains("x = 5i64;"), "got: {out}");
+    assert!(
+        !out.contains("mut x = 5i64"),
+        "reassign must not emit mut: {out}"
+    );
+}
+
+#[test]
+fn fit_increment_idiom_emits_accumulator() {
+    // The increment idiom. The paren-wrap on the RHS BinOp is the Task 3
+    // `unused_parens` tradeoff (paren-everywhere emit), not a defect here.
+    let out = parse_and_emit("sit @x est 0.\n@x fit @x plus 1.\n");
+    assert!(out.contains("let mut x = 0i64;"), "got: {out}");
+    assert!(out.contains("x = (x + 1i64);"), "got: {out}");
+}
+
+#[test]
+fn fit_reassign_with_rust_keyword_target_uses_raw_prefix() {
+    let out = parse_and_emit("sit @if est 0.\n@if fit 1.\n");
+    assert!(out.contains("let mut r#if = 0i64;"), "got: {out}");
+    assert!(out.contains("r#if = 1i64;"), "got: {out}");
+}
+
+#[test]
+fn fit_reassign_unescapable_target_errors() {
+    let err = parse_and_emit_err("sit @self est 0.\n@self fit 1.\n");
+    assert!(matches!(err, EmitError::UnescapableRustKeyword { .. }));
+}

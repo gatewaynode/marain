@@ -15,8 +15,8 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::ast::{
-    Block, CallExpr, CallStmt, ElseBranch, Expr, ForStmt, FunctionStmt, IfStmt, LetStmt, LoopStmt,
-    MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
+    AssignStmt, Block, CallExpr, CallStmt, ElseBranch, Expr, ForStmt, FunctionStmt, IfStmt,
+    LetStmt, LoopStmt, MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
 };
 use crate::error::Diagnostic;
 use crate::span::Span;
@@ -59,6 +59,7 @@ fn emit_stmt(out: &mut String, stmt: &Stmt, indent_level: usize) -> Result<(), E
     push_indent(out, indent_level);
     match stmt {
         Stmt::Let(l) => emit_let(out, l)?,
+        Stmt::Assign(a) => emit_assign(out, a)?,
         Stmt::MacroCall(c) => emit_macro_call(out, c)?,
         Stmt::If(i) => emit_if(out, i, indent_level)?,
         Stmt::While(w) => emit_while(out, w, indent_level)?,
@@ -233,6 +234,20 @@ fn emit_let(out: &mut String, l: &LetStmt) -> Result<(), EmitError> {
     out.push_str(&escaped);
     out.push_str(" = ");
     emit_expr(out, &l.value)?;
+    out.push(';');
+    Ok(())
+}
+
+fn emit_assign(out: &mut String, a: &AssignStmt) -> Result<(), EmitError> {
+    // A reassignment is a *use* site, not a binding site, so — unlike emit_let /
+    // emit_param / emit_for — it deliberately emits NO `mut`. The `@`→`mut` rule
+    // applies only where a binding is introduced; `@x fit …` re-binds the
+    // existing `mut x`. This is the non-obvious bit, hence not shared with
+    // emit_let.
+    let name = escape_ident_for_rust(&a.target.name, a.target.span)?;
+    out.push_str(&name);
+    out.push_str(" = ");
+    emit_expr(out, &a.value)?;
     out.push(';');
     Ok(())
 }

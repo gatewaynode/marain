@@ -23,6 +23,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 11+12 | §14 Operator Expressions + Control Flow | **Closed** |
 | 13 | §15 Function Declarations + Calls | **Closed** |
 | 14+15 | §16 Loops + Ranges + `nihil` | **Closed** |
+| 16 | §17 Reassignment (`fit`) | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -1526,3 +1527,115 @@ status with unchanged justifications.
 ### 16.8 Forward hooks
 
 Open backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md) §1: open-ended ranges (`..b` / `a..` / `..` / `..=b` — `RangeExpr`'s `Option` fields already model them, so activation is a `parse_range` change and the emit arm already guards both sides with `if let Some`); stepped / reverse iteration (lowers to `.step_by` / `.rev` once method-call syntax exists); `nihil` as an expression (`Expr::Nihil` mirroring `Stmt::Nihil`). `pro` over real collection iterators lands for free once collection literals exist (§2) — any expression already parses as the iterable.
+
+## 17. Reassignment (`fit`)
+
+Round 16. Wires the already-lexed `Keyword::Fit` through parse + emit so a
+declared mutable binding can be re-bound — the binding lifecycle's missing half
+(initial assignment `sit @x est 0.` worked since R5; reassignment did not). In-spec
+(PRD §4.4 reassign copula, `docs/core-lexicon.md:46`); no PRD amendment, just
+wiring an existing keyword.
+
+### 17.1 Scope (v0.2)
+
+**In:** `@x fit <expr> .` reassignment statement; `Stmt::Assign(AssignStmt)` with a
+bare `SigiledIdent` target; dispatch on a leading `SigiledIdent`; a parse-time
+`@`-required check on the target; emit of `name = value;` with NO `mut`.
+
+**Out (deferred):** field / index targets (`@x.y`, `@x[i]` — no method-call or
+index syntax yet); compound assignment (`+=` analogue — not in the PRD §4.4 operator
+table, so increment stays explicit: `@x fit @x plus 1.`); cross-statement mutability
+tracking (reassigning a `sit ^x`-declared binding via `@x` still falls to rustc).
+
+### 17.2 Decomposition
+
+```
+crates/marain-core/src/
+  ast.rs               (modified)  + AssignStmt; +Stmt::Assign; span() dispatch
+  ast_tests.rs         (modified)  + assign span-dispatch test
+  parser/grammar.rs    (modified)  + parse_assign; dispatch on SigiledIdent;
+                                      Sigil import
+  parser/error.rs      (modified)  + ImmutableReassignmentTarget variant + arms
+                                      + message test
+  parser/mod_tests.rs  (modified)  + R16 parser tests
+  emit.rs              (modified)  + emit_assign + Stmt::Assign arm
+  emit_tests.rs        (modified)  + R16 emit tests
+```
+
+File-size status (production-side): `ast.rs` 396 ✓, `parser/grammar.rs` 411 ✓,
+`parser/error.rs` 174 ✓, `emit.rs` **500** (at the target ceiling — the next emit
+addition must split or justify). No pressure-release split needed this round.
+
+### 17.3 Decisions
+
+_Full rationale: [`tasks/decisions/R16_fit_reassignment.md`](../tasks/decisions/R16_fit_reassignment.md). Summary list below._
+
+- **A Require `@` target.** A `fit` target must carry the `@` sigil; a `^` target is a hard parse error (`ImmutableReassignmentTarget`, cites PRD §4.5). Surfaces the contradiction at the Marain level, not via a rustc message with no span back-mapping. Purely syntactic; no symbol table.
+- **B Emit no `mut`.** `emit_assign` is deliberately not shared with `emit_let`/`emit_param`/`emit_for` — a reassignment is a *use* site, not a binding site, so the `@`→`mut` rule does not apply. The one non-obvious bit; carries an inline comment.
+- **C Dispatch on leading `SigiledIdent`.** Unambiguous and previously dead (such a statement was always `UnknownStatementStart`). Wrong-verb case (`@x est 5.`) now yields a clean "expected keyword `fit`".
+- **D Bare `SigiledIdent` target.** Field/index targets out of scope until method/index syntax lands; shape mirrors `LetStmt` minus `est`.
+- **PRD reconciliation.** PRD line 115's illustrative `^x fit 5` is footnoted as showing the verb contrast only; the §4.5 sigil rule rejects a `^` target. Canonical form is `@x fit 5`.
+
+### 17.4 New AST shape
+
+```rust
+pub enum Stmt {
+    // ... existing variants ...
+    Assign(AssignStmt), // new — @x fit <expr> .
+}
+
+pub struct AssignStmt {
+    pub target: SigiledIdent, // always Sigil::Mutable (parser-enforced)
+    pub value: Expr,
+    pub span: Span,
+}
+```
+
+Carry-over α (inflection slot) untouched: `AssignStmt.target` is a `SigiledIdent`,
+which already carries the slot.
+
+### 17.5 Test coverage
+
+- **`ast_tests.rs`** — +1: `Stmt::Assign` span dispatch.
+- **`parser/mod_tests.rs`** — +5: `@x fit 5.` parses to `Assign` with `@` target;
+  `@x fit @x plus 1.` value is a BinOp; `^x fit 5.` → `ImmutableReassignmentTarget`;
+  `@x fit 5` (no period) → `UnexpectedToken`; `@x est 5.` (wrong verb) →
+  `UnexpectedToken` expecting `fit`.
+- **`parser/error.rs`** — +1: `ImmutableReassignmentTarget` message names `^x`/`@x`
+  and cites PRD §4.5.
+- **`emit_tests.rs`** — +4: reassign emits assignment without `mut`; increment idiom
+  emits `x = (x + 1i64);`; rust-keyword target uses `r#` prefix; unescapable target
+  errors.
+- **Goldens** — 1 new emit fixture (`27_fit_reassignment`, the accumulator) and 1
+  new error fixture (`errors/17_fit_immutable_target`).
+- **Manual e2e** — `pro`/`fit` accumulator (`sit @series est 0.` / `pro ^i in 1..=5
+  : @series fit @series plus ^i.` / `dic ^series.`) run through `marain run` prints
+  `15`. Confirms emitted Rust compiles and executes; the lone `unused_parens`
+  warning is the known Task 3 tradeoff.
+
+**Test count delta: +11.** Workspace total at R16 close: **461** (was 450).
+`cargo fmt --all`, `cargo clippy --all-targets -D warnings`, `cargo test --all`
+all clean.
+
+### 17.6 Sentrux signal at R16 close
+
+Session baseline `quality_signal` **7063**; post-R16 **7057** (`signal_delta` −6,
+i.e. *improved* — lower is better in this signal's polarity per R14+R15's −13).
+`coupling_change` [0.0, 0.0], `cycles_change` [0, 0], 0 violations, "Quality stable
+or improved". No new import edges (the new types stay within already-coupled
+modules: `AssignStmt` flows ast → parser/emit, same as `LetStmt`).
+
+### 17.7 Pressure-release tier 1 not invoked
+
+No production file crossed the 500 target — but `emit.rs` landed *exactly* at 500.
+The next emit-arm addition must either split `emit.rs` (e.g. `emit/{stmt,expr}.rs`)
+or carry a module-doc justification per the pressure-release rule. Flagged as the
+R16-close watch-out.
+
+### 17.8 Forward hooks
+
+Compound assignment (`+=`-style) is not specced in the PRD §4.4 operator table, so
+increment stays explicit (`@x fit @x plus 1.`); revisit only with a PRD amendment.
+Field/index targets activate when method-call / index syntax lands. Cross-statement
+mutability tracking (catching `sit ^x` declared, `@x` reassigned) is a
+name-resolution-era concern.
