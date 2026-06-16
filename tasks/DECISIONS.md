@@ -25,6 +25,20 @@ Mechanically: a future-Claude reading `ARCHITECTURE.md` learns *what* was decide
 
 Rounds R1–R8 (foundation: crate layout, span model, error model, lexer, parser, codegen, CLI, testing harness) are backfill candidates — extract on demand when revisiting a round's rationale.
 
+## Architecture Decision Records (non-round)
+
+Cross-cutting decisions that aren't tied to a single round live as ADRs under
+`docs/architecture/`. Rationale stays in the ADR; this is the discoverable index.
+
+| ADR | Title | Status | Closed |
+| --- | ----- | ------ | ------ |
+| [0001](../docs/architecture/ADR-0001-multi-frontend-ir.md) | Multi-frontend architecture (shared Rust-subset IR) | **Rejected** | 2026-06-16 |
+
+ADR-0001 rejection in one line: the multi-frontend goal (Marain + Space Latin + Common
+over a shared IR) was withdrawn; Marain stays a single Latin-core language. The "seam
+gets more expensive every round" pressure was a cost *of* that goal, so retracting the
+goal removes it. Only the standalone E1 leak fixes survive, in `tasks/BACKLOG.md`.
+
 ## Related
 
 - `tasks/TODO.md` — round tracker + active findings (the *plan*).

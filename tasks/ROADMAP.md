@@ -1,20 +1,28 @@
-# Marain — Roadmap & Backlog
+# Marain — Roadmap
 
-Single source of truth for long-term plans and deferred work. Created 2026-05-31 by
-consolidating items that were scattered across PRD.md (§4.11.6, §4.12, §4.3, Stage-2
-open questions), ARCHITECTURE.md ("Forward hooks" subsections + §11 Stage 2 hooks),
-`tasks/CONTINUITY.md` (pinned carry-overs γ/ζ/θ), and `docs/core-lexicon.md`
-("proposed" rows).
+Work the project is **committed to**, grouped by theme, with source citations.
+Created 2026-05-31 by consolidating items that were scattered across PRD.md
+(§4.11.6, §4.12, §4.3, Stage-2 open questions), ARCHITECTURE.md ("Forward hooks"
+subsections + §11 Stage 2 hooks), `tasks/CONTINUITY.md` (pinned carry-overs γ/ζ/θ),
+and `docs/core-lexicon.md` ("proposed" rows).
 
 ## How this doc works
 
-- **ROADMAP.md** (this file) = the long-term backlog, grouped by theme, with source
-  citations. Items live here until scheduled.
-- **`tasks/TODO.md`** = active work. When an item is scheduled, copy it into TODO.md
-  as a numbered task; leave it here (optionally marked *in TODO*) so the backlog stays
-  complete.
+Planning-doc convention (set 2026-06-10):
+
+- **ROADMAP.md** (this file) = **committed** work. Being here means it will happen;
+  only the ordering is open. Items live here until scheduled.
+- **`tasks/BACKLOG.md`** = **uncommitted** work — proposals that can be pulled into
+  the roadmap or sit indefinitely. Nothing in BACKLOG.md is a promise.
+- **`tasks/TODO.md`** = active work. When a roadmap item is scheduled, copy it into
+  TODO.md as a numbered task; leave it here (optionally marked *in TODO*) so the
+  roadmap stays complete.
 - Citations are **section-level** (e.g. `PRD §4.11.6`, `ARCH §16.8`) rather than line
   numbers, so they survive doc edits.
+- **Triage pending:** this doc predates the committed/uncommitted split and was
+  written as a candidate pool — some sections (notably "v0.3 candidates") are not yet
+  true commitments. Triage each section into ROADMAP (committed) vs BACKLOG
+  (uncommitted) during a future PRD pass.
 
 ## Status snapshot (2026-05-31)
 
@@ -23,7 +31,10 @@ open questions), ARCHITECTURE.md ("Forward hooks" subsections + §11 Stage 2 hoo
   (comments, blocks, `si`/`aliter`, operators, `dum`/`semper`/`interrumpe`/`continua`,
   `functio`/`redde`/calls, `pro`/ranges/`nihil`). Commit + a runnable v0.2 done-line e2e
   still outstanding.
-- No v0.3 round is framed yet. This doc is the candidate pool for that framing.
+- No v0.3 round is framed yet. Candidates for that framing live below (pending the
+  committed/uncommitted triage noted above). (`tasks/BACKLOG.md` now holds only the
+  standalone E1 code-quality item — the multi-frontend initiative there was rejected
+  2026-06-16; see ADR-0001.)
 
 ## Active findings (currently tracked in `tasks/TODO.md`)
 
