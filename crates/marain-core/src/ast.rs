@@ -335,6 +335,18 @@ pub enum BinOp {
     Vel,         // ||
 }
 
+/// Operator associativity, used only by minimal-paren emission (`emit/expr.rs`).
+///
+/// Mirrors **Rust's** grammar, not Marain's parser cascade: Rust's six
+/// relational operators are one *non-associative* level (`a < b < c` is a
+/// syntax error), whereas `parser/expressions.rs` builds them with
+/// left-associative loops. Emit must follow the target grammar.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Associativity {
+    Left,
+    None,
+}
+
 impl BinOp {
     /// Rust source representation of this operator.
     pub fn as_rust(self) -> &'static str {
@@ -352,6 +364,43 @@ impl BinOp {
             Self::MaiorVelPar => ">=",
             Self::Et => "&&",
             Self::Vel => "||",
+        }
+    }
+
+    /// Precedence rank for minimal-paren emission; higher binds tighter.
+    /// See [`BinOp::rank`] for the table.
+    pub fn precedence(self) -> u8 {
+        self.rank().0
+    }
+
+    /// Associativity for minimal-paren emission. See [`BinOp::rank`].
+    pub fn associativity(self) -> Associativity {
+        self.rank().1
+    }
+
+    /// The `(precedence, associativity)` pair the minimal-paren emitter needs,
+    /// kept together because every paren decision consults both.
+    ///
+    /// Ranked by **Rust's** precedence table (the emit target), which is NOT
+    /// the parser cascade: Rust groups all six relational operators at one
+    /// non-associative level (`a < b < c` is illegal), while the parser splits
+    /// equality above comparison and builds both left-associatively. The paren
+    /// decision has to match the grammar the output is re-parsed under, so this
+    /// follows Rust. Exhaustive with no catch-all — a new operator cannot
+    /// compile until it is given a rank here, which is the whole point.
+    fn rank(self) -> (u8, Associativity) {
+        use Associativity::{Left, None};
+        match self {
+            Self::Per | Self::DivisusPer | Self::Modulo => (6, Left), // * / %
+            Self::Plus | Self::Minus => (5, Left),                    // + -
+            Self::Aequat
+            | Self::NonAequat
+            | Self::MinorQuam
+            | Self::MaiorQuam
+            | Self::MinorVelPar
+            | Self::MaiorVelPar => (4, None), // == != < > <= >=
+            Self::Et => (3, Left),                                    // &&
+            Self::Vel => (2, Left),                                   // ||
         }
     }
 }

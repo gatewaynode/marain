@@ -7,9 +7,35 @@
 
 use std::fmt::Write;
 
-use crate::ast::{CallExpr, Expr, FStringLit, FStringPart};
+use crate::ast::{Associativity, BinOp, CallExpr, Expr, FStringLit, FStringPart};
 
 use super::{EmitError, escape_ident_for_rust, escape_string_for_rust};
+
+/// Precedence above every binary operator: `non` (Rust `!`) binds tighter than
+/// any binary op in our surface.
+const UNARY_PREC: u8 = 0xF0;
+/// Precedence below every binary operator: ranges are the loosest construct, so
+/// any binop operand of a range binds tighter and never needs parens.
+const RANGE_PREC: u8 = 1;
+/// Atoms (literals, var-refs, calls, f-strings, already-parenthesized exprs)
+/// never need wrapping — they re-parse as a single unit regardless of context.
+const ATOM_PREC: u8 = u8::MAX;
+
+/// Precedence rank of an expression for the minimal-paren decision. Exhaustive
+/// over `Expr` so a future variant must declare where it sits.
+fn expr_precedence(expr: &Expr) -> u8 {
+    match expr {
+        Expr::BinOp(b) => b.op.precedence(),
+        Expr::UnaryOp(_) => UNARY_PREC,
+        Expr::Range(_) => RANGE_PREC,
+        Expr::StringLit(_)
+        | Expr::FString(_)
+        | Expr::IntegerLit(_)
+        | Expr::BoolLit(_)
+        | Expr::VarRef(_)
+        | Expr::Call(_) => ATOM_PREC,
+    }
+}
 
 pub(super) fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> {
     match expr {
@@ -32,28 +58,32 @@ pub(super) fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> 
             out.push_str(&escaped);
         }
         Expr::BinOp(b) => {
-            // Wrap every binary op in parens; the parser already encodes correct
-            // precedence in the tree shape, paren-everywhere makes emission
-            // bulletproof against precedence drift in the Rust target.
-            out.push('(');
-            emit_expr(out, &b.lhs)?;
+            // Minimal parens (R18, replacing R11+R12's paren-everywhere): wrap an
+            // operand only when Rust's precedence/associativity would otherwise
+            // re-parse it differently. See `emit_operand`.
+            emit_operand(out, &b.lhs, b.op, false)?;
             out.push(' ');
             out.push_str(b.op.as_rust());
             out.push(' ');
-            emit_expr(out, &b.rhs)?;
-            out.push(')');
+            emit_operand(out, &b.rhs, b.op, true)?;
         }
         Expr::UnaryOp(u) => {
-            out.push('(');
             out.push_str(u.op.as_rust());
-            emit_expr(out, &u.operand)?;
-            out.push(')');
+            // `non`'s operand needs parens only when it binds looser than the
+            // prefix op: `non (a et b)` → `!(a && b)`, but `non non a` → `!!a`.
+            if expr_precedence(&u.operand) < UNARY_PREC {
+                out.push('(');
+                emit_expr(out, &u.operand)?;
+                out.push(')');
+            } else {
+                emit_expr(out, &u.operand)?;
+            }
         }
         Expr::Call(c) => emit_call(out, c)?,
         Expr::Range(r) => {
-            // No paren-wrap (ranges aren't BinOps and don't share the
-            // paren-everywhere rule); operands carry their own paren-wrap via
-            // emit_expr if they're BinOp/UnaryOp shapes.
+            // Range is the loosest construct, so its operands always bind
+            // tighter and never need parens (the parser can't even produce a
+            // range as a range operand). Emit them directly.
             if let Some(start) = &r.start {
                 emit_expr(out, start)?;
             }
@@ -64,6 +94,46 @@ pub(super) fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> 
         }
     }
     Ok(())
+}
+
+/// Emit `child` as an operand of a binary expression with operator `parent`,
+/// parenthesizing only when Rust's grammar needs it to preserve the parse.
+/// `is_right` marks the right-hand operand (matters for left-associative ops).
+fn emit_operand(
+    out: &mut String,
+    child: &Expr,
+    parent: BinOp,
+    is_right: bool,
+) -> Result<(), EmitError> {
+    if operand_needs_parens(child, parent, is_right) {
+        out.push('(');
+        emit_expr(out, child)?;
+        out.push(')');
+    } else {
+        emit_expr(out, child)?;
+    }
+    Ok(())
+}
+
+/// Wrap iff the child binds looser than the parent, or binds *equally* and its
+/// position would re-group under the parent's associativity.
+fn operand_needs_parens(child: &Expr, parent: BinOp, is_right: bool) -> bool {
+    let parent_prec = parent.precedence();
+    match expr_precedence(child) {
+        c if c < parent_prec => true,
+        c if c == parent_prec => regroups_at_equal_precedence(parent, is_right),
+        _ => false,
+    }
+}
+
+/// For an operand that ties the parent's precedence: a non-associative parent
+/// (Rust's relationals) re-groups on *either* side (`a < b < c` is illegal), a
+/// left-associative parent only on the right (`a - (b - c)` ≠ `a - b - c`).
+fn regroups_at_equal_precedence(parent: BinOp, is_right: bool) -> bool {
+    match parent.associativity() {
+        Associativity::None => true,
+        Associativity::Left => is_right,
+    }
 }
 
 pub(super) fn emit_call(out: &mut String, c: &CallExpr) -> Result<(), EmitError> {

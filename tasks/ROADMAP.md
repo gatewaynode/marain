@@ -29,12 +29,13 @@ Planning-doc convention (set 2026-06-10):
 - **v0.1** (the "Salve, Munde" done line, PRD §7) — **shipped** (rounds R1–R8).
 - **v0.2** (Control Flow & Functions, PRD §4.11) — **feature-complete** across R9–R15
   (comments, blocks, `si`/`aliter`, operators, `dum`/`semper`/`interrumpe`/`continua`,
-  `functio`/`redde`/calls, `pro`/ranges/`nihil`). Commit + a runnable v0.2 done-line e2e
-  still outstanding.
-- No v0.3 round is framed yet. Candidates for that framing live below (pending the
-  committed/uncommitted triage noted above). (`tasks/BACKLOG.md` now holds only the
-  standalone E1 code-quality item — the multi-frontend initiative there was rejected
-  2026-06-16; see ADR-0001.)
+  `functio`/`redde`/calls, `pro`/ranges/`nihil`). The runnable v0.2 done-line e2e shipped
+  in R18 (`tests/e2e_control_flow.rs`).
+- **v0.3 direction chosen 2026-06-17: the type system** (user-defined types → generics →
+  stdlib type names; §2 below). No round is framed yet — the entry point is a PRD pass to
+  scope/order §2 (and triage §1's "v0.3 candidates" pool into firm commitments at the same
+  time). (`tasks/BACKLOG.md` now holds only the standalone E1 code-quality item — the
+  multi-frontend initiative there was rejected 2026-06-16; see ADR-0001.)
 
 ## Active findings (currently tracked in `tasks/TODO.md`)
 
@@ -43,7 +44,7 @@ intersect the backlog so they're cross-referenced:
 
 - ~~**TODO Task 1** — no string concatenation/interpolation~~ → **SHIPPED R17** as f-strings (§4 below). Both interpolation (`f"salve {^x}"`) and concatenation (`f"{^a}{^b}"`) lower to `format!`; holes are variable-refs-only in v0.3.
 - ~~**TODO Task 0/2** — `fit` reassignment~~ → **SHIPPED R16** (§1 below); Task 2 was the original gap analysis, Task 0 the implementation spec.
-- **TODO Task 3** — `unused_parens` in emitted Rust (an emit-quality fix, not a roadmap feature). Now also fires on `fit` assignment RHS (`x = (x + 1i64);`), as R16 confirmed.
+- ~~**TODO Task 3** — `unused_parens` in emitted Rust~~ → **SHIPPED R18** as precedence-aware (minimal-paren) emit, reversing the §14 paren-everywhere decision. Also shipped the §6 compiling control-flow e2e. See ARCH §14.9 / `tasks/decisions/R18_precedence_aware_emit.md`.
 
 ---
 
@@ -123,7 +124,7 @@ the architectural seams aren't lost:
 |------|------|--------|-------|
 | **`marain check`** | lex + parse (+ name-resolve) without invoking rustc | ARCH §9.9 | One `args::Command` variant + one driver dispatch arm. |
 | **`marain install`** | symlink a built user program into `~/.local/bin/<name>` | ARCH §9.9 | Adds `~/.local/bin` to the path table. |
-| **v0.2 done-line e2e** | run emitted control-flow Rust through `cargo build -D warnings` | TODO Task 3 note | Goldens are string-compare only; a compiling e2e would have caught Task 3 and guards future emit regressions. Near-term, not v0.3-gated. |
+| ~~**v0.2 done-line e2e**~~ | run emitted control-flow Rust through `cargo run` under `RUSTFLAGS=-D warnings` | TODO Task 3 note | **SHIPPED R18** as `tests/e2e_control_flow.rs` — asserts warning-clean build AND correct computed value (catches precedence miscompiles a build-only check can't). Closes the goldens-never-compile gap. |
 | **Rustc error back-mapping** | map rustc errors back onto Marain source spans | PRD §"Non-Goals" (revisit **post-v0.5**) | Currently cargo output passes through verbatim. Listed as a non-goal with a revisit horizon, not an active plan. |
 
 ## 7. Non-goals (explicitly NOT planned)

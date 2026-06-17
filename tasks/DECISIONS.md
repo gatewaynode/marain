@@ -17,6 +17,7 @@ Mechanically: a future-Claude reading `ARCHITECTURE.md` learns *what* was decide
 
 | Round | Title | Closed | Archive |
 | ----- | ----- | ------ | ------- |
+| R18 | Precedence-aware emit + compiling control-flow e2e | 2026-06-17 | [R18_precedence_aware_emit.md](decisions/R18_precedence_aware_emit.md) |
 | R17 | f-strings (interpolation + concatenation) | 2026-06-17 | [R17_fstrings.md](decisions/R17_fstrings.md) |
 | R16 | Reassignment (`fit`) | 2026-06-16 | [R16_fit_reassignment.md](decisions/R16_fit_reassignment.md) |
 | R14+R15 | `pro` loops + range tokens + `nihil` | 2026-05-31 | [R14_15_pro_ranges_nihil.md](decisions/R14_15_pro_ranges_nihil.md) |

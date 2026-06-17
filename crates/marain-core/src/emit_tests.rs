@@ -1,8 +1,9 @@
-//! 712 LOC, exceeds 500 target: sibling test file for `emit.rs`. Tests share
+//! 935 LOC, exceeds 500 target: sibling test file for `emit.rs`. Tests share
 //! the `parse_and_emit` / `parse_and_emit_err` helpers and exhaustively cover
 //! every emit arm (skeleton, R5 productions, Rust-keyword escape, R10 `if`,
-//! R11 ops + boolean, R12 control flow, R13 functio/redde/calls). One file,
-//! one helper set; splitting by R-round would force helper chasing.
+//! R11 ops + boolean, R12 control flow, R13 functio/redde/calls, R18
+//! minimal-paren). One file, one helper set; splitting by R-round would force
+//! helper chasing.
 
 use std::path::PathBuf;
 
@@ -406,96 +407,166 @@ fn falsum_emits_false() {
     assert!(out.contains("let x = false;"));
 }
 
+// ─── R18: minimal-paren emit (replaces R11+R12 paren-everywhere) ─────────
+// A single top-level BinOp/UnaryOp in a `let` RHS is no longer wrapped — the
+// `unused_parens` lint slot is clean.
+
 #[test]
-fn binop_plus_emits_parenwrapped() {
+fn binop_plus_emits_no_redundant_parens() {
     let out = parse_and_emit("sit ^x est 1 plus 2.\n");
-    assert!(out.contains("let x = (1i64 + 2i64);"));
+    assert!(out.contains("let x = 1i64 + 2i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_per_emits_star() {
     let out = parse_and_emit("sit ^x est 2 per 3.\n");
-    assert!(out.contains("(2i64 * 3i64)"));
+    assert!(out.contains("let x = 2i64 * 3i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_divisus_per_emits_slash() {
     let out = parse_and_emit("sit ^x est 10 divisus per 2.\n");
-    assert!(out.contains("(10i64 / 2i64)"));
+    assert!(out.contains("let x = 10i64 / 2i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_modulo_emits_percent() {
     let out = parse_and_emit("sit ^x est 10 modulo 3.\n");
-    assert!(out.contains("(10i64 % 3i64)"));
+    assert!(out.contains("let x = 10i64 % 3i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_aequat_emits_eq_eq() {
     let out = parse_and_emit("sit ^x est 1 aequat 1.\n");
-    assert!(out.contains("(1i64 == 1i64)"));
+    assert!(out.contains("let x = 1i64 == 1i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_non_aequat_emits_bang_eq() {
     let out = parse_and_emit("sit ^x est 1 non aequat 2.\n");
-    assert!(out.contains("(1i64 != 2i64)"));
+    assert!(out.contains("let x = 1i64 != 2i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_minor_quam_emits_lt() {
     let out = parse_and_emit("sit ^x est 1 minor quam 2.\n");
-    assert!(out.contains("(1i64 < 2i64)"));
+    assert!(out.contains("let x = 1i64 < 2i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_maior_quam_emits_gt() {
     let out = parse_and_emit("sit ^x est 2 maior quam 1.\n");
-    assert!(out.contains("(2i64 > 1i64)"));
+    assert!(out.contains("let x = 2i64 > 1i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_minor_vel_par_emits_le() {
     let out = parse_and_emit("sit ^x est 1 minor vel par 2.\n");
-    assert!(out.contains("(1i64 <= 2i64)"));
+    assert!(out.contains("let x = 1i64 <= 2i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_maior_vel_par_emits_ge() {
     let out = parse_and_emit("sit ^x est 2 maior vel par 1.\n");
-    assert!(out.contains("(2i64 >= 1i64)"));
+    assert!(out.contains("let x = 2i64 >= 1i64;"), "out was {out}");
 }
 
 #[test]
 fn binop_et_emits_logical_and() {
     let out = parse_and_emit("sit ^x est verum et falsum.\n");
-    assert!(out.contains("(true && false)"));
+    assert!(out.contains("let x = true && false;"), "out was {out}");
 }
 
 #[test]
 fn binop_vel_emits_logical_or() {
     let out = parse_and_emit("sit ^x est verum vel falsum.\n");
-    assert!(out.contains("(true || false)"));
+    assert!(out.contains("let x = true || false;"), "out was {out}");
 }
 
 #[test]
-fn unary_non_emits_bang() {
+fn unary_non_emits_bang_no_parens() {
     let out = parse_and_emit("sit ^x est non verum.\n");
-    assert!(out.contains("(!true)"));
+    assert!(out.contains("let x = !true;"), "out was {out}");
 }
 
 #[test]
-fn nested_binop_preserves_precedence_via_parens() {
-    // a plus b per c → (a + (b * c))
+fn mixed_precedence_omits_redundant_parens() {
+    // a plus b per c → a + b * c (the `*` binds tighter; no parens needed).
     let out = parse_and_emit("sit ^x est 1 plus 2 per 3.\n");
-    assert!(out.contains("(1i64 + (2i64 * 3i64))"));
+    assert!(out.contains("let x = 1i64 + 2i64 * 3i64;"), "out was {out}");
 }
 
 #[test]
-fn user_parens_collapse_into_tree_then_re_emit_parens() {
-    // (1 plus 2) per 3 → ((1 + 2) * 3)
+fn lower_precedence_child_keeps_necessary_parens() {
+    // (a plus b) per c → (a + b) * c — the `+` must stay parenthesized.
     let out = parse_and_emit("sit ^x est (1 plus 2) per 3.\n");
-    assert!(out.contains("((1i64 + 2i64) * 3i64)"));
+    assert!(
+        out.contains("let x = (1i64 + 2i64) * 3i64;"),
+        "out was {out}"
+    );
+}
+
+#[test]
+fn left_assoc_left_child_omits_parens() {
+    // a minus b minus c parses (a - b) - c; left-assoc, no parens.
+    let out = parse_and_emit("sit ^x est 9 minus 3 minus 2.\n");
+    assert!(out.contains("let x = 9i64 - 3i64 - 2i64;"), "out was {out}");
+}
+
+#[test]
+fn left_assoc_right_child_keeps_parens() {
+    // a minus (b minus c): the right operand at equal precedence re-groups, so
+    // the parens are load-bearing — `a - b - c` would mean (a-b)-c.
+    let out = parse_and_emit("sit ^x est 9 minus (3 minus 2).\n");
+    assert!(
+        out.contains("let x = 9i64 - (3i64 - 2i64);"),
+        "out was {out}"
+    );
+}
+
+#[test]
+fn chained_relational_left_child_keeps_parens() {
+    // THE TRAP: Rust relationals are non-associative. (a < b) < c must keep its
+    // parens — emitting `a < b < c` is a Rust syntax error (chained comparison).
+    let out = parse_and_emit("sit ^x est 1 minor quam 2 minor quam 3.\n");
+    assert!(
+        out.contains("let x = (1i64 < 2i64) < 3i64;"),
+        "out was {out}"
+    );
+}
+
+#[test]
+fn mixed_relational_keeps_parens_for_rust_grouping() {
+    // Parser ranks equality below comparison, so a aequat b minor quam c parses
+    // a == (b < c). Rust groups all six relationals at one non-assoc level, so
+    // emit must parenthesize: `a == b < c` would be a chained-comparison error.
+    let out = parse_and_emit("sit ^x est 1 aequat 2 minor quam 3.\n");
+    assert!(
+        out.contains("let x = 1i64 == (2i64 < 3i64);"),
+        "out was {out}"
+    );
+}
+
+#[test]
+fn unary_wraps_lower_precedence_operand() {
+    // non (a et b) → !(a && b): the operand binds looser than `!`.
+    let out = parse_and_emit("sit ^x est non (verum et falsum).\n");
+    assert!(out.contains("let x = !(true && false);"), "out was {out}");
+}
+
+#[test]
+fn unary_does_not_wrap_higher_precedence_operand() {
+    // non a et b parses (non a) && b → !a && b: `!` binds tighter than `&&`.
+    let out = parse_and_emit("sit ^x est non verum et falsum.\n");
+    assert!(out.contains("let x = !true && false;"), "out was {out}");
+}
+
+#[test]
+fn condition_slot_has_no_redundant_parens() {
+    // The original Task 3 defect: `if (i < 5) {` warned unused_parens.
+    let out = parse_and_emit("si 1 minor quam 5 :\n    dic \"y\".\n");
+    assert!(out.contains("if 1i64 < 5i64 {"), "out was {out}");
+    assert!(!out.contains("if ("), "redundant cond parens: {out}");
 }
 
 // ─── R12: control-flow emit ─────────────────────────────────────────────
@@ -543,7 +614,7 @@ fn si_with_binop_cond_emits_typecheckable_rust() {
     // Verifies that R11+R12 together produce Rust the borrow checker will accept,
     // closing R10's "si 1 :" caveat.
     let out = parse_and_emit("si verum et falsum :\n    dic \"ok\".\n");
-    assert!(out.contains("if (true && false) {"));
+    assert!(out.contains("if true && false {"), "out was {out}");
 }
 
 #[test]
@@ -629,9 +700,11 @@ fn call_with_args_emits_comma_separated() {
 }
 
 #[test]
-fn call_with_binop_arg_preserves_paren_wrap() {
+fn call_with_binop_arg_omits_redundant_parens() {
+    // A call argument is its own expression context, so the top-level BinOp
+    // needs no parens: `f(1 + 2)`, not `f((1 + 2))` (R18 minimal-paren).
     let out = parse_and_emit("functio f(^x: Numerus) :\n    dic \"x\".\nsit ^r est f(1 plus 2).\n");
-    assert!(out.contains("let r = f((1i64 + 2i64));"));
+    assert!(out.contains("let r = f(1i64 + 2i64);"), "out was {out}");
 }
 
 #[test]
@@ -727,11 +800,12 @@ fn range_inclusive_emits_dotdoteq() {
 }
 
 #[test]
-fn range_with_binop_endpoints_preserves_paren_wrap() {
-    // BinOp operands keep their paren-wrap; range itself doesn't add parens.
+fn range_with_binop_endpoints_omits_parens() {
+    // Range is looser than `+`/`-`, so the endpoints bind tighter and need no
+    // parens — Rust parses `1 + 2..10 - 3` as `(1+2)..(10-3)` (R18 minimal-paren).
     let out = parse_and_emit("sit ^r est 1 plus 2..10 minus 3.\n");
     assert!(
-        out.contains("let r = (1i64 + 2i64)..(10i64 - 3i64);"),
+        out.contains("let r = 1i64 + 2i64..10i64 - 3i64;"),
         "got: {out}"
     );
 }
@@ -808,11 +882,11 @@ fn fit_reassign_emits_assignment_without_mut() {
 
 #[test]
 fn fit_increment_idiom_emits_accumulator() {
-    // The increment idiom. The paren-wrap on the RHS BinOp is the Task 3
-    // `unused_parens` tradeoff (paren-everywhere emit), not a defect here.
+    // The increment idiom. R18 minimal-paren: the assignment RHS is a clean
+    // `x = x + 1i64;` (no redundant parens → no `unused_parens` warning).
     let out = parse_and_emit("sit @x est 0.\n@x fit @x plus 1.\n");
     assert!(out.contains("let mut x = 0i64;"), "got: {out}");
-    assert!(out.contains("x = (x + 1i64);"), "got: {out}");
+    assert!(out.contains("x = x + 1i64;"), "got: {out}");
 }
 
 #[test]

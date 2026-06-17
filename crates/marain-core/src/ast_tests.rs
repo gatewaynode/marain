@@ -148,6 +148,67 @@ fn binop_expr_span_and_as_rust() {
 }
 
 #[test]
+fn binop_precedence_follows_rust_table() {
+    // Higher binds tighter. Ranked by Rust's table (the emit target): all six
+    // relationals share one level, above `&&`, above `||`.
+    let mul = BinOp::Per.precedence();
+    let add = BinOp::Plus.precedence();
+    let rel = BinOp::MinorQuam.precedence();
+    let and = BinOp::Et.precedence();
+    let or = BinOp::Vel.precedence();
+    assert!(mul > add, "* must bind tighter than +");
+    assert!(add > rel, "+ must bind tighter than relationals");
+    assert!(rel > and, "relationals must bind tighter than &&");
+    assert!(and > or, "&& must bind tighter than ||");
+
+    // The whole relational family is one precedence level.
+    for op in [
+        BinOp::Aequat,
+        BinOp::NonAequat,
+        BinOp::MinorQuam,
+        BinOp::MaiorQuam,
+        BinOp::MinorVelPar,
+        BinOp::MaiorVelPar,
+    ] {
+        assert_eq!(
+            op.precedence(),
+            rel,
+            "{op:?} should share the relational level"
+        );
+    }
+    // Arithmetic stays at one level per Rust (`+`/`-`, `*`/`/`/`%`).
+    assert_eq!(BinOp::Minus.precedence(), add);
+    assert_eq!(BinOp::DivisusPer.precedence(), mul);
+    assert_eq!(BinOp::Modulo.precedence(), mul);
+}
+
+#[test]
+fn relational_ops_are_non_associative() {
+    // Rust forbids `a < b < c`; everything else is left-associative.
+    for op in [
+        BinOp::Aequat,
+        BinOp::NonAequat,
+        BinOp::MinorQuam,
+        BinOp::MaiorQuam,
+        BinOp::MinorVelPar,
+        BinOp::MaiorVelPar,
+    ] {
+        assert_eq!(op.associativity(), Associativity::None, "{op:?}");
+    }
+    for op in [
+        BinOp::Plus,
+        BinOp::Minus,
+        BinOp::Per,
+        BinOp::DivisusPer,
+        BinOp::Modulo,
+        BinOp::Et,
+        BinOp::Vel,
+    ] {
+        assert_eq!(op.associativity(), Associativity::Left, "{op:?}");
+    }
+}
+
+#[test]
 fn unary_op_expr_span_and_as_rust() {
     let operand = varref("x", 4, 6);
     let e = Expr::UnaryOp(UnaryOpExpr {

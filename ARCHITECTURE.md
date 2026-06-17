@@ -25,6 +25,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 14+15 | §16 Loops + Ranges + `nihil` | **Closed** |
 | 16 | §17 Reassignment (`fit`) | **Closed** |
 | 17 | §18 f-strings (interpolation + concatenation) | **Closed** |
+| 18 | §14 (amended; see §14.9) Precedence-aware emit + control-flow e2e | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -979,7 +980,7 @@ _Full rationale: [`tasks/decisions/R11_12_operators_control_flow.md`](../tasks/d
 - **Multi-word phrases consumed greedily at parse level.** `consume_comparison_completer` peeks for `quam` / `vel par` after `minor` / `maior`; same shape for `divisus per` and `non aequat`. Lexer stays single-word-per-token.
 - **`non` disambiguates via `peek_kind_at`.** At equality level, `non aequat` is `!=`; everything else is unary prefix at `parse_unary`.
 - **`Expr::BoolLit` is a new variant**, not folded into `IntegerLit`. Parallels `StringLit` / `IntegerLit` shape.
-- **Paren-wrap-always in emit.** Every `BinOp` / `UnaryOp` emits with surrounding parens. Cost: visual noise. Benefit: zero risk of precedence drift in the lowering.
+- ~~**Paren-wrap-always in emit.** Every `BinOp` / `UnaryOp` emits with surrounding parens. Cost: visual noise. Benefit: zero risk of precedence drift in the lowering.~~ **Superseded by R18** (§14.6): replaced with precedence-aware minimal-paren emit. The "drift" worry was discharged by deriving the emit precedence from Rust's table (the re-parse target) and adding a value-checking compile e2e. The visual-noise cost (and the `unused_parens` warnings it caused — TODO Task 3) is gone.
 - **Expression-grouping parens (`(expr)`) in primary** unwrap to inner expression — no `ParenExpr` AST node; precedence is structurally encoded in tree shape.
 - **`aliter` recognition by next-token after `parse_block` returns.** Indent alignment enforced implicitly by layout tokens.
 - **`aliter si` recurses through `parse_if`.** Chain becomes nested `IfStmt.else_branch: Some(If(Box<IfStmt { ... }>))`. Single nested AST shape; emit walks via `emit_else_branch` → `emit_if` recursion.
@@ -1113,6 +1114,30 @@ statements, expressions).
 Open backlog tracked in [`tasks/ROADMAP.md`](../tasks/ROADMAP.md): labeled `break 'name` / `continue 'name` and `break <expr>` (§1; each grows an `Option<Ident>` / `Option<Expr>` field on the stmt); op-name inflection metadata (§5; parallels the carry-over α pattern on `BinOp` variants).
 
 Resolved in later rounds: `functio` declaration block (R13 / §15); `pro` + range tokens (`DotDot` / `DotDotEq`) and `nihil.` (R14+R15 / §16).
+
+### 14.9 R18 amendment — precedence-aware emit
+
+_Full rationale: [`tasks/decisions/R18_precedence_aware_emit.md`](../tasks/decisions/R18_precedence_aware_emit.md). Summary below._
+
+R18 reverses the §14.3 "paren-wrap-always" decision. `emit/expr.rs` now wraps an
+operand only when Rust's precedence/associativity would re-parse it differently
+(minimal-paren / pretty-printer technique), driven by `BinOp::rank() -> (precedence,
+associativity)` in `ast.rs`.
+
+- **Emit table = Rust's grammar, not the parser cascade.** All six relational operators
+  rank at one **non-associative** level (Rust forbids `a < b < c`), even though the
+  parser splits equality above comparison and builds both left-associatively. The two
+  answer different questions; emit must match the re-parse target. This is the one place
+  paren-everywhere was silently load-bearing (chained relationals would otherwise emit
+  invalid Rust).
+- **Exhaustive `rank()` match, no catch-all** — a future operator can't compile until
+  ranked. Replaces brute-force paren safety with compiler-enforced safety.
+- **`unused_parens` (TODO Task 3) resolved**; emitted Rust is now idiomatic.
+- **New compiling e2e** (`tests/e2e_control_flow.rs`) compiles control-flow output under
+  `RUSTFLAGS=-D warnings` AND asserts the computed value — closes the goldens-never-
+  compile gap (ROADMAP §6 done-line e2e) and guards both the lint and precedence
+  semantics. Sentrux 7033 → 7035; the `rank()` lookup-table complexity flag is accepted
+  (see decision C).
 
 ## 15. Function Declarations + Calls
 

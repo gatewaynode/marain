@@ -1,113 +1,129 @@
-# Continuity — R17 (f-strings) shipped; choose the next round
+# Continuity — R18 (precedence-aware emit) shipped; v0.3 = type system (PRD pass next)
 
-_Rewritten 2026-06-17 (R17 close). This session implemented and closed f-strings
-(TODO Task 1) as R17. Code + tests + docs all landed and verified. Next session:
-pick the next round (candidates below). Rewrite on next use._
+_Rewritten 2026-06-17 (R18 close). This session implemented and closed Task 3 as R18:
+minimal-paren emit + a compiling control-flow e2e; then set the future direction to the
+v0.3 type system. Code + tests + docs all landed and verified. NOT yet committed — owner
+handles git. Next session: the v0.3 type-system PRD framing pass. Rewrite on next use._
 
-## What Just Shipped — R17 (f-strings)
+## What Just Shipped — R18 (precedence-aware emit + control-flow e2e)
 
-String composition now exists. `f"salve {^nomen}"` lowers to `format!("salve {}", nomen)`;
-concatenation is the all-holes form `f"{^a}{^b}"` → `format!("{}{}", a, b)`. One
-mechanism for both — no concat operator (PRD §4.7). Resolves TODO Task 1.
+Emitted Rust is now idiomatic — no redundant parens — and the goldens-never-compile gap
+is closed. Resolves TODO Task 3 and the ROADMAP §6 done-line e2e.
 
-- **Owner-locked scope:** holes are **variable-refs-only** (`{^x}` / `{@x}`). Empty /
-  no-sigil / expression holes and Rust format specs are `InvalidFStringHole`.
-- **One-pass lexer:** `scan_fstring` resolves each hole inline via `scan_sigiled_ident`
-  (correct spans + `FileId`, no parser sub-lexing, no lexer mode-state). Internal
-  `{`/`}` never reach the main dispatch, so they don't perturb indent/bracket state.
-  Prefix is `f"` with no space (unambiguous: variables carry sigils, calls need `(`).
-- **New shapes:** `TokenKind::FStringLit(Vec<FStringSeg>)` (lexer, holes pre-resolved),
-  `Expr::FString(FStringLit{ parts: Vec<FStringPart> })`; parser does a pure 1:1 lift.
-- **emit.rs split** (discharges the R16 watch-out): expression emitters →
-  `emit/expr.rs` (129); `emit.rs` back to 436. Also moved `lexer/mod.rs` driver tests
-  to sibling `lexer/mod_tests.rs` (mod.rs 264 ✓).
-- **Verified:** fmt / clippy -D warnings / `test --all` clean (**492 tests**, +31).
-  Sentrux improved (7057 → 7033, 0 violations). e2e through `marain run` prints
-  `Salve, Munde!` / `Concat: SalveMunde` / `Numerus est 42.`.
-- **Archived:** ARCH §18 (+ §0 row, §17.7 marked resolved), `tasks/decisions/R17_fstrings.md`
-  (+ DECISIONS row), PRD §4.6 footnote, lexicon update, ROADMAP §4 row shipped + Task 1
-  struck, TODO Task 1 marked DONE.
+- **Minimal-paren emit (reverses ARCH §14 paren-everywhere).** `emit/expr.rs` wraps an
+  operand only when Rust's precedence/associativity would re-parse it differently.
+  Driven by `BinOp::rank() -> (precedence, associativity)` in `ast.rs`; `emit_operand` +
+  `operand_needs_parens` + `regroups_at_equal_precedence` do the decision.
+- **The trap (decision B):** the emit table follows **Rust's** grammar, NOT the parser
+  cascade. Rust ranks all six relationals (`== != < > <= >=`) at ONE non-associative
+  level (`a < b < c` is a syntax error); the parser is left-assoc + two-level. So
+  `a minor quam b minor quam c` → `(a < b) < c` must keep parens, and
+  `a aequat b minor quam c` → `a == (b < c)`. This is the one place §14's blanket was
+  silently load-bearing. Covered by dedicated tests.
+- **Exhaustive `rank()` (decision C):** no catch-all → a future operator can't compile
+  until ranked. Compiler-enforced safety replacing brute-force parens. Sentrux flags
+  `rank()` as a "complex function" (lookup table) — **accepted**, an exhaustive match is
+  the correct form; net signal improved 7033 → 7035.
+- **Compiling e2e** (`tests/e2e_control_flow.rs`): accumulator compiled with
+  `RUSTFLAGS=-D warnings` AND run; asserts clean build (kills `unused_parens`) AND stdout
+  `20` (proves `summa + i*2`, not `(summa+i)*2` — catches precedence miscompiles a
+  build-only check can't).
+- **Verified:** fmt / clippy -D warnings / `test --all` clean (**502 tests**, +10).
+  `cargo doc` only the 2 pre-existing `marain-cli` intra-doc warnings. All goldens
+  regenerated + eyeballed (6 fixtures: 12/13/14/15/20/27).
+- **Archived:** ARCH §14.9 (+ §0 row, §14.3 bullet struck), `tasks/decisions/R18_precedence_aware_emit.md`
+  (+ DECISIONS row), ROADMAP §6 e2e + Task 3 shipped, TODO Task 3 DONE.
 
-## Immediate Next Action — frame the next round
+## Immediate Next Action — PRD pass for the v0.3 type system
 
-No round is in flight. v0.2 feature-complete (R9–R16); R17 was the first v0.3-era
-language feature. Candidates, roughly by leverage:
+**Direction chosen by the owner 2026-06-17: the v0.3 type system** (option a of the
+direction slate). The arc: user-defined types (`structura` / `enumeratio` / `modulus` /
+`praestatio` / `proprietas`) → generics → stdlib type names (`Agmen` / `Vocabularium` /
+`Fortasse` / `Eventus`). ROADMAP §2; depends on generics + collection literals.
 
-1. **Task 3 — `unused_parens` + v0.2 done-line e2e** (`tasks/TODO.md`, ROADMAP §6).
-   Paren-everywhere emit (ARCH §14) warns on `if`/`while` conds, `let`/`redde`/`fit`
-   RHS. Two fixes in TODO: (a) precedence-aware emit [elegant, reverses §14], (b)
-   outermost-strip [surgical]. Pairs with a compiling e2e (goldens are string-compare
-   only — they never compile their output). **Note:** f-string emit does NOT add new
-   `unused_parens` sites (format args aren't paren-wrapped), so R17 didn't worsen this.
-2. **More f-string surface** — expression holes (`{^a plus ^b}`) and/or format specs
-   (`{x:>5}`). Widen `FStringPart::Interp` from `SigiledIdent` to `Expr` + give the
-   lexer brace-balanced sub-lexing (or parser-side hole parse). Owner deferred these
-   in R17; pull in only on request.
-3. **v0.3 framing** — type system / user-defined types (ROADMAP §2), `Variabile` (γ,
-   ROADMAP §3), or triple-quoted strings (ROADMAP §4). Needs a PRD pass first.
+**Entry point = a PRD framing pass** (CLAUDE.md: create/extend the PRD interactively, then
+derive ARCHITECTURE from it). The type system is too large to jump straight to a round
+spec — frame scope + ordering first. The same PRD pass resolves the still-open ROADMAP
+"Triage pending" note: triage §1's "v0.3 candidates" pool into committed (→ ROADMAP) vs
+uncommitted (→ BACKLOG) now that the direction is known.
 
-Recommendation: **#1** — closes the only warning Marain emits and the goldens-never-
-compile gap, small and self-contained. Owner's call.
+Cleanup status (checked this session): `BACKLOG.md` clean; `TODO.md` Tasks 0/1/2/3 all
+DONE (tracker empty, ready for the next round); the only loose end is the ROADMAP §1/§2
+triage, which is coupled to — and falls out of — the PRD pass above.
+
+Sequencing for the PRD pass: lead with the **decision-bearing forks** — (1) static
+user-defined types vs. also pulling in the dynamic `Variabile` wrapper (γ, ROADMAP §3);
+(2) how much generics surface to commit to up front (the lexer currently hard-errors on
+`<`/`>` via `GenericsLookalike` — activation flips that arm); (3) visibility (`publicus`)
++ modules (`modulus`) ordering. Use **ASCII labels (a/b/c)** for framing slates.
 
 ## Watch-outs (carry into next round)
 
-- **emit.rs=500 watch-out is RESOLVED** (split into `emit.rs` 436 + `emit/expr.rs` 129).
-  New emit arms go in `emit/expr.rs` (expressions) or `emit.rs` (statements); both have
-  headroom. Escapers + `EmitError` live in `emit.rs`, reached from the child via `super::`.
-- Test files over target with justifications: `parser/mod_tests.rs` (~1550),
-  `emit_tests.rs` (~870), `lexer/mod_tests.rs` (553). Sibling-split is the established
-  move; all carry doc-comment justifications.
+- **emit.rs / emit/expr.rs both have headroom.** `emit/expr.rs` now ~190 LOC (added
+  `expr_precedence` + 3 paren helpers); `emit.rs` 436. New expr arms → `emit/expr.rs`,
+  stmt arms → `emit.rs`. Escapers + `EmitError` in `emit.rs`, reached via `super::`.
+- **Test files over target (justified, sibling-split is the move):**
+  `parser/mod_tests.rs` (~1550), `emit_tests.rs` (935 — grew +R18), `lexer/mod_tests.rs`
+  (553). All carry doc-comment justifications.
+- **`rank()` complexity flag** is accepted noise (lookup table). Don't "fix" it by
+  de-matching — that loses compiler-enforced exhaustiveness. If a future op lands, add it
+  to the single `rank()` match.
+- **Future paren hard case:** closures (`|x| body`, Rust's lowest greedy-right
+  precedence) will be the genuinely tricky minimal-paren case when they land. The
+  exhaustive `rank()` match forces us to think about it rather than silently miscompile.
 
 ## Where We Are (state)
 
 **Marain is a single Latin-core language** (multi-frontend rejected, ADR-0001). v0.2
-feature-complete R9–R16; R17 added f-strings. Pipeline:
-`.lat → lexer → tokens → parser → AST → emit → Rust → shim (cargo) → run`. **492 tests.**
-Only external dep is `clap` (pinned).
+feature-complete R9–R16; R17 added f-strings; R18 made emit idiomatic + added the
+compiling e2e. Pipeline: `.lat → lexer → tokens → parser → AST → emit → Rust → shim
+(cargo) → run`. **502 tests.** Only external dep is `clap` (pinned).
 
-## Commit State — R17 NOT yet committed ⚠️
+## Commit State — R18 NOT yet committed ⚠️
 
-R17 is complete in the working tree but **uncommitted**. Owner handles all git/CI —
-surface + recommend, never stage/commit. Suggested commit grouping when the owner is
-ready:
-- **Source:** `crates/marain-core/src/{token.rs, ast.rs, lexer/mod.rs, lexer/strings.rs,
-  lexer/error.rs, lexer/mod_tests.rs (new), parser/expressions.rs, emit.rs,
-  emit/expr.rs (new), ast_tests.rs, emit_tests.rs, parser/mod_tests.rs}`.
-- **Fixtures (new):** `tests/fixtures/{28_fstring_interpolation, 29_fstring_concat}.{lat,expected.rs}`
-  + `tests/fixtures/errors/{18_fstring_empty_hole, 19_fstring_expression_hole}.{lat,expected.txt}`.
-- **Docs:** `ARCHITECTURE.md`, `PRD.md`, `docs/core-lexicon.md`, `tasks/{ROADMAP.md,
-  TODO.md, DECISIONS.md, CONTINUITY.md}`, `tasks/decisions/R17_fstrings.md` (new).
-- ⚠️ Don't forget `git add` for the **new** files (lexer/mod_tests.rs, emit/expr.rs,
-  the 4 fixtures+2 expected, R17_fstrings.md) — a tracked-only commit will miss them
-  (the R16 lesson). `tasks/LESSONS.md` may still be uncommitted from R16.
+R18 work is complete and verified but **uncommitted** (owner handles all git/CI — surface
++ recommend, never stage/commit). Changed/new files this round:
+- `crates/marain-core/src/ast.rs` (+`Associativity`, `BinOp::rank/precedence/associativity`)
+- `crates/marain-core/src/emit/expr.rs` (minimal-paren emit + helpers)
+- `crates/marain-core/src/ast_tests.rs`, `emit_tests.rs` (precedence/assoc/trap tests)
+- `crates/marain-core/tests/e2e_control_flow.rs` (NEW)
+- 6 regenerated goldens under `crates/marain-core/tests/fixtures/`
+- docs: ARCHITECTURE.md, tasks/DECISIONS.md, tasks/decisions/R18_precedence_aware_emit.md
+  (NEW), tasks/ROADMAP.md, tasks/TODO.md, tasks/CONTINUITY.md
+Recommended commit message: `feat: R18 — precedence-aware (minimal-paren) emit + compiling control-flow e2e`.
 
 ## Open Decisions
 
-- **Next round: UNCHOSEN** (see candidates above).
-- **v0.3 still largely unframed** — frame from ARCH §16.8/§17.8/§18.7 + PRD §4.3/§4.11.
+- **v0.3 direction: CHOSEN = type system** (2026-06-17). Next: PRD framing pass (see
+  Immediate Next Action), which also discharges the ROADMAP §1/§2 triage.
+- **v0.3 type-system scope still unframed** — frame from PRD §4.3/§4.11 + ARCH §15.8;
+  forks listed in Immediate Next Action.
 - **E1 leak fixes** parked in BACKLOG; only leak 2 (`unreachable!` → `EmitError`) has
   standalone single-language value.
 
 ## Carry-over Concerns
 
-Unchanged, Stage-2 / post-v0.2: **γ (Variabile)** (ROADMAP §3); **ζ** cross-file
-Stage-2 diagnostics; **θ** Stage-2 inflection tokens (the `SigiledIdent` inflection
-slot in f-string holes already carries α forward).
+Unchanged, Stage-2 / post-v0.2: **γ (Variabile)** (ROADMAP §3); **ζ** cross-file Stage-2
+diagnostics; **θ** Stage-2 inflection tokens. R18 added a future note: closure paren
+emit (see Watch-outs).
 
 ## When You Resume
 
-1. **Commit check** — confirm the owner committed R17 (incl. the new files listed
-   above). Don't `git add`/commit yourself (owner handles git/CI).
-2. **Pick a round** from "Immediate Next Action"; enter plan mode to frame it.
-3. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code;
-   on close → decisions file + DECISIONS row + ARCH §N + ROADMAP + check off TODO +
-   rewrite this file. Use **ASCII labels (a/b/c)** for any framing slate.
+1. **Commit check** — R18 is complete but UNCOMMITTED; tree is dirty. Don't
+   `git add`/commit yourself (owner handles git/CI). Confirm with the owner it landed.
+2. **Start the v0.3 type-system PRD pass** (direction chosen 2026-06-17). Lead with the
+   decision-bearing forks in Immediate Next Action; extend `PRD.md` interactively, then
+   derive ARCHITECTURE. Triage ROADMAP §1/§2 as part of the same pass.
+3. Once the PRD scopes a first round, enter plan mode to frame it.
+4. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code; on
+   close → decisions file + DECISIONS row + ARCH §N + ROADMAP + check off TODO + rewrite
+   this file. Use **ASCII labels (a/b/c)** for any framing slate.
 
 ## Tactical Notes
 
 - Date 2026-06-17. Project renamed Rubigo → Marain (repo dir still `rubigo`).
 - Doc convention (load-bearing): **ROADMAP = committed, BACKLOG = uncommitted.**
-- Golden harnesses auto-collect fixtures; regenerate with `MARAIN_UPDATE_GOLDENS=1`
-  then eyeball the `.expected.rs`/`.expected.txt` diff.
+- Golden harnesses auto-collect fixtures; regenerate with `MARAIN_UPDATE_GOLDENS=1` then
+  eyeball the `.expected.rs`/`.expected.txt` diff.
 - CLI: `marain run <file.lat>` transpiles + executes; `cargo run -p marain-cli -- run …`
-  during dev. f-string e2e scratch file was `/tmp/r17_e2e.lat`.
+  during dev. R18 e2e program is inline in `tests/e2e_control_flow.rs`.
