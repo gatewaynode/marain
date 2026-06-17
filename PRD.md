@@ -150,7 +150,7 @@ Lifetime annotations and reference-of-reference syntax are deferred past v0.1.
 - **Indentation-significant blocks.** No braces. The lexer emits synthetic `INDENT`/`DEDENT` tokens. Spaces only; mixed tabs/spaces in one file is a hard lex error.
 - **Triple-quoted multiline strings.** `"""…"""` preserves embedded newlines and the layout the author wrote.
 - **Dynamic value wrapper.** A `Variabile` tagged enum: `Numerus | Decimalis | Sermo | Bool | Nihil | Index(Vec<Variabile>) | Vocabularium(HashMap<String, Variabile>)`. Transpiles to a hand-rolled Rust enum (vendored, not a dependency). Lets the author write loose, JSON-shaped data without ceremony.
-- **Concise literals + f-strings.** `{clavis: valor}`, `[unum, duo]`, `(x, y)`, `f"salve {nomen}"` — surface sugar over `HashMap`, `Vec`, tuples, and `format!`.
+- **Concise literals + f-strings.** `{clavis: valor}`, `[unum, duo]`, `(x, y)`, `f"salve {nomen}"` — surface sugar over `HashMap`, `Vec`, tuples, and `format!`. _(R17, 2026-06-17: f-strings shipped as `f"salve {^nomen}"` — sugar over `format!`, covering both interpolation and concatenation (`f"{^a}{^b}"`). Shipped subset is variable-refs-only holes (`{^x}` / `{@x}`); full-expression holes and Rust format specs (`{x:>5}`) plus the concise dict/list/tuple literals remain deferred. See ARCHITECTURE §18.)_
 
 ### 4.7 Macro Call Syntax
 

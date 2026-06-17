@@ -41,7 +41,7 @@ Planning-doc convention (set 2026-06-10):
 These were surfaced during manual testing and live in TODO.md, not here, but they
 intersect the backlog so they're cross-referenced:
 
-- **TODO Task 1** — no string concatenation/interpolation → resolved by **f-strings** (§4 below).
+- ~~**TODO Task 1** — no string concatenation/interpolation~~ → **SHIPPED R17** as f-strings (§4 below). Both interpolation (`f"salve {^x}"`) and concatenation (`f"{^a}{^b}"`) lower to `format!`; holes are variable-refs-only in v0.3.
 - ~~**TODO Task 0/2** — `fit` reassignment~~ → **SHIPPED R16** (§1 below); Task 2 was the original gap analysis, Task 0 the implementation spec.
 - **TODO Task 3** — `unused_parens` in emitted Rust (an emit-quality fix, not a roadmap feature). Now also fires on `fit` assignment RHS (`x = (x + 1i64);`), as R16 confirmed.
 
@@ -94,8 +94,8 @@ intersect the backlog so they're cross-referenced:
 
 | Item | What | Source | Notes |
 |------|------|--------|-------|
-| **F-strings** | `f"salve {nomen}"` | PRD §3, §4.6 | The PRD's intended mechanism for string composition (replaces a concat operator — see TODO Task 1). Needs string-interior parsing. |
-| **Triple-quoted strings** | `"""…"""` | PRD §4 (Python-niceties), lexicon | Multiline string literals. |
+| ~~**F-strings**~~ | `f"salve {^nomen}"` | PRD §3, §4.6 | **SHIPPED R17.** Sugar over `format!`; covers interpolation and concatenation (no concat operator). Holes are variable-refs-only (`{^x}` / `{@x}`); full-expression holes and format specs (`{x:>5}`) deferred. See ARCH §18 / `tasks/decisions/R17_fstrings.md`. |
+| **Triple-quoted strings** | `"""…"""` | PRD §4 (Python-niceties), lexicon | Multiline string literals. Still deferred — R17 shipped single-line f-strings only. |
 
 ## 5. Stage 2 — Latin grammar + LSP (its own milestone)
 

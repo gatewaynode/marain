@@ -1,110 +1,113 @@
-# Continuity — R16 (`fit` reassignment) shipped; choose the next round
+# Continuity — R17 (f-strings) shipped; choose the next round
 
-_Rewritten 2026-06-16 (R16 close). Last session scoped Task 0; this session
-**implemented and closed it as R16**. Code + tests + docs all landed and verified.
-Next session: pick the next round (candidates below). Rewrite on next use._
+_Rewritten 2026-06-17 (R17 close). This session implemented and closed f-strings
+(TODO Task 1) as R17. Code + tests + docs all landed and verified. Next session:
+pick the next round (candidates below). Rewrite on next use._
 
-## What Just Shipped — R16 (`fit` reassignment)
+## What Just Shipped — R17 (f-strings)
 
-The binding lifecycle's missing half is now complete: a declared mutable binding
-can be re-bound. `@x fit <expr> .` parses and emits `x = <expr>;`.
+String composition now exists. `f"salve {^nomen}"` lowers to `format!("salve {}", nomen)`;
+concatenation is the all-holes form `f"{^a}{^b}"` → `format!("{}{}", a, b)`. One
+mechanism for both — no concat operator (PRD §4.7). Resolves TODO Task 1.
 
-- **Five edit sites landed** (all green): `ast.rs` (`Stmt::Assign(AssignStmt)`),
-  `parser/grammar.rs` (`parse_assign` + `SigiledIdent` dispatch), `parser/error.rs`
-  (`ImmutableReassignmentTarget`), `emit.rs` (`emit_assign`, **no `mut`**), plus
-  tests across `ast_tests.rs` / `mod_tests.rs` / `emit_tests.rs` and 2 golden
-  fixtures (`27_fit_reassignment`, `errors/17_fit_immutable_target`).
-- **Locked decision honored:** `@` target required; `^` target is a parse error.
-- **Verified:** `cargo fmt --all` / `clippy --all-targets -D warnings` /
-  `test --all` all clean (**461 tests**, +11). Sentrux stable (signal 7063 → 7057,
-  improved; 0 violations). **e2e:** a `pro`/`fit` accumulator run through
-  `marain run` prints `15` — emitted Rust compiles and executes.
-- **Archived:** ARCH §17 (+ §0 reading-order row), `tasks/decisions/R16_fit_reassignment.md`
-  (+ DECISIONS index row), PRD line-115 footnote, ROADMAP §1 row marked shipped.
+- **Owner-locked scope:** holes are **variable-refs-only** (`{^x}` / `{@x}`). Empty /
+  no-sigil / expression holes and Rust format specs are `InvalidFStringHole`.
+- **One-pass lexer:** `scan_fstring` resolves each hole inline via `scan_sigiled_ident`
+  (correct spans + `FileId`, no parser sub-lexing, no lexer mode-state). Internal
+  `{`/`}` never reach the main dispatch, so they don't perturb indent/bracket state.
+  Prefix is `f"` with no space (unambiguous: variables carry sigils, calls need `(`).
+- **New shapes:** `TokenKind::FStringLit(Vec<FStringSeg>)` (lexer, holes pre-resolved),
+  `Expr::FString(FStringLit{ parts: Vec<FStringPart> })`; parser does a pure 1:1 lift.
+- **emit.rs split** (discharges the R16 watch-out): expression emitters →
+  `emit/expr.rs` (129); `emit.rs` back to 436. Also moved `lexer/mod.rs` driver tests
+  to sibling `lexer/mod_tests.rs` (mod.rs 264 ✓).
+- **Verified:** fmt / clippy -D warnings / `test --all` clean (**492 tests**, +31).
+  Sentrux improved (7057 → 7033, 0 violations). e2e through `marain run` prints
+  `Salve, Munde!` / `Concat: SalveMunde` / `Numerus est 42.`.
+- **Archived:** ARCH §18 (+ §0 row, §17.7 marked resolved), `tasks/decisions/R17_fstrings.md`
+  (+ DECISIONS row), PRD §4.6 footnote, lexicon update, ROADMAP §4 row shipped + Task 1
+  struck, TODO Task 1 marked DONE.
 
 ## Immediate Next Action — frame the next round
 
-No round is in flight. v0.2 is now genuinely feature-complete (R9–R16). Candidates,
-roughly ordered by leverage:
+No round is in flight. v0.2 feature-complete (R9–R16); R17 was the first v0.3-era
+language feature. Candidates, roughly by leverage:
 
-1. **v0.2 done-line e2e + commit** (ROADMAP §6, near-term, NOT v0.3-gated). The
-   goldens are string-compare only — they never compile their output. A test that
-   runs emitted control-flow/`fit` Rust through `cargo build -D warnings` would have
-   caught Task 3 and guards future emit regressions. **Pairs naturally with Task 3.**
-2. **Task 3 — `unused_parens`** (`tasks/TODO.md`). Paren-everywhere emit (ARCH §14)
-   warns on `if`/`while` conds, `let`/`redde` values, and — confirmed in R16 — `fit`
-   assignment RHS (`x = (x + 1i64);`). Two fix options in TODO: (a) precedence-aware
-   emit [elegant, reverses §14], (b) outermost-strip [surgical]. Either regenerates
-   all goldens via `MARAIN_UPDATE_GOLDENS=1`.
-3. **v0.3 framing** — type system / user-defined types (ROADMAP §2), f-strings
-   (Task 1 / ROADMAP §4), or `Variabile` (γ). Unframed; needs a PRD pass first.
+1. **Task 3 — `unused_parens` + v0.2 done-line e2e** (`tasks/TODO.md`, ROADMAP §6).
+   Paren-everywhere emit (ARCH §14) warns on `if`/`while` conds, `let`/`redde`/`fit`
+   RHS. Two fixes in TODO: (a) precedence-aware emit [elegant, reverses §14], (b)
+   outermost-strip [surgical]. Pairs with a compiling e2e (goldens are string-compare
+   only — they never compile their output). **Note:** f-string emit does NOT add new
+   `unused_parens` sites (format args aren't paren-wrapped), so R17 didn't worsen this.
+2. **More f-string surface** — expression holes (`{^a plus ^b}`) and/or format specs
+   (`{x:>5}`). Widen `FStringPart::Interp` from `SigiledIdent` to `Expr` + give the
+   lexer brace-balanced sub-lexing (or parser-side hole parse). Owner deferred these
+   in R17; pull in only on request.
+3. **v0.3 framing** — type system / user-defined types (ROADMAP §2), `Variabile` (γ,
+   ROADMAP §3), or triple-quoted strings (ROADMAP §4). Needs a PRD pass first.
 
-Recommendation: **#1 + #2 together** — small, closes a real testing gap, and clears
-the only warning Marain currently emits. Owner's call on ordering.
+Recommendation: **#1** — closes the only warning Marain emits and the goldens-never-
+compile gap, small and self-contained. Owner's call.
 
 ## Watch-outs (carry into next round)
 
-- **`emit.rs` is at exactly 500 LOC** (the target ceiling). The NEXT emit-arm
-  addition must split it (e.g. `emit/{stmt,expr}.rs`) or carry a module-doc
-  pressure-release justification. This bites whoever does Task 3 or any v0.3 emit
-  work. Flagged in ARCH §17.2 / §17.7.
-- Test files already over target with justifications: `parser/mod_tests.rs` (~1490),
-  `emit_tests.rs` (~830), `lexer/mod.rs` (749). Sibling-split pattern (`#[path]`)
-  is the clean move if any grows further.
+- **emit.rs=500 watch-out is RESOLVED** (split into `emit.rs` 436 + `emit/expr.rs` 129).
+  New emit arms go in `emit/expr.rs` (expressions) or `emit.rs` (statements); both have
+  headroom. Escapers + `EmitError` live in `emit.rs`, reached from the child via `super::`.
+- Test files over target with justifications: `parser/mod_tests.rs` (~1550),
+  `emit_tests.rs` (~870), `lexer/mod_tests.rs` (553). Sibling-split is the established
+  move; all carry doc-comment justifications.
 
 ## Where We Are (state)
 
-**Marain is a single Latin-core language** — multi-frontend initiative rejected
-2026-06-16 (ADR-0001). v0.2 feature-complete R9–R16; lexer→parser→AST→emit→goldens
-end to end. **461 tests.** Only external dep is `clap` (pinned). Pipeline:
-`.lat → lexer → tokens → parser → AST → emit → Rust → shim (cargo) → run`.
+**Marain is a single Latin-core language** (multi-frontend rejected, ADR-0001). v0.2
+feature-complete R9–R16; R17 added f-strings. Pipeline:
+`.lat → lexer → tokens → parser → AST → emit → Rust → shim (cargo) → run`. **492 tests.**
+Only external dep is `clap` (pinned).
 
-## Commit State — ⚠️ R16 PARTIALLY committed (5 files still untracked)
+## Commit State — R17 NOT yet committed ⚠️
 
-R16 tracked edits are committed and **pushed** as `2eb497a` ("Assignment and
-reassignment implementation 'fit'"), on `main`, in sync with `origin/main`.
-
-**BUT 5 new files were NOT in that commit — still untracked, owner must `git add`:**
-- `crates/marain-core/tests/fixtures/27_fit_reassignment.lat`
-- `crates/marain-core/tests/fixtures/27_fit_reassignment.expected.rs`
-- `crates/marain-core/tests/fixtures/errors/17_fit_immutable_target.lat`
-- `crates/marain-core/tests/fixtures/errors/17_fit_immutable_target.expected.txt`
-- `tasks/decisions/R16_fit_reassignment.md`
-
-Without these, a fresh checkout loses the `fit` golden fixtures and the decision
-archive that ARCH §17 / DECISIONS index link to. `2eb497a` is pushed, so this is a
-**follow-up commit** (not an amend). **Owner handles all git/CI** — do not stage or
-commit; just remind. (The R16 doc/source edits in `2eb497a` are safe and complete;
-only these 5 additions are outstanding.)
+R17 is complete in the working tree but **uncommitted**. Owner handles all git/CI —
+surface + recommend, never stage/commit. Suggested commit grouping when the owner is
+ready:
+- **Source:** `crates/marain-core/src/{token.rs, ast.rs, lexer/mod.rs, lexer/strings.rs,
+  lexer/error.rs, lexer/mod_tests.rs (new), parser/expressions.rs, emit.rs,
+  emit/expr.rs (new), ast_tests.rs, emit_tests.rs, parser/mod_tests.rs}`.
+- **Fixtures (new):** `tests/fixtures/{28_fstring_interpolation, 29_fstring_concat}.{lat,expected.rs}`
+  + `tests/fixtures/errors/{18_fstring_empty_hole, 19_fstring_expression_hole}.{lat,expected.txt}`.
+- **Docs:** `ARCHITECTURE.md`, `PRD.md`, `docs/core-lexicon.md`, `tasks/{ROADMAP.md,
+  TODO.md, DECISIONS.md, CONTINUITY.md}`, `tasks/decisions/R17_fstrings.md` (new).
+- ⚠️ Don't forget `git add` for the **new** files (lexer/mod_tests.rs, emit/expr.rs,
+  the 4 fixtures+2 expected, R17_fstrings.md) — a tracked-only commit will miss them
+  (the R16 lesson). `tasks/LESSONS.md` may still be uncommitted from R16.
 
 ## Open Decisions
 
 - **Next round: UNCHOSEN** (see candidates above).
-- **v0.3 unframed** — frame from `ARCH §16.8`/`§17.8` + `PRD §4.11`/§4.3 when ready.
+- **v0.3 still largely unframed** — frame from ARCH §16.8/§17.8/§18.7 + PRD §4.3/§4.11.
 - **E1 leak fixes** parked in BACKLOG; only leak 2 (`unreachable!` → `EmitError`) has
   standalone single-language value.
 
 ## Carry-over Concerns
 
-All Stage-2 / post-v0.2, unchanged: **γ (Variabile)** plain roadmap item (ROADMAP §3);
-**ζ** cross-file Stage-2 diagnostics; **θ** Stage-2 inflection tokens.
+Unchanged, Stage-2 / post-v0.2: **γ (Variabile)** (ROADMAP §3); **ζ** cross-file
+Stage-2 diagnostics; **θ** Stage-2 inflection tokens (the `SigiledIdent` inflection
+slot in f-string holes already carries α forward).
 
 ## When You Resume
 
-1. **Commit check** — R16 is committed as `2eb497a` (pushed), but **5 files are still
-   untracked** (see "Commit State" above). If `git status` still shows them, remind the
-   owner — do NOT `git add`/commit yourself (owner handles all git/CI).
+1. **Commit check** — confirm the owner committed R17 (incl. the new files listed
+   above). Don't `git add`/commit yourself (owner handles git/CI).
 2. **Pick a round** from "Immediate Next Action"; enter plan mode to frame it.
-3. **Mind the `emit.rs` 500-LOC ceiling** before adding any emit arm.
-4. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code;
-   on close → decisions file + DECISIONS row + ARCH §N.3 + ROADMAP + check off TODO +
+3. Round-close ritual (CLAUDE.md §7): sentrux `session_start` baseline BEFORE code;
+   on close → decisions file + DECISIONS row + ARCH §N + ROADMAP + check off TODO +
    rewrite this file. Use **ASCII labels (a/b/c)** for any framing slate.
 
 ## Tactical Notes
 
-- Date 2026-06-16. Project renamed Rubigo → Marain (repo dir still `rubigo`).
+- Date 2026-06-17. Project renamed Rubigo → Marain (repo dir still `rubigo`).
 - Doc convention (load-bearing): **ROADMAP = committed, BACKLOG = uncommitted.**
 - Golden harnesses auto-collect fixtures; regenerate with `MARAIN_UPDATE_GOLDENS=1`
   then eyeball the `.expected.rs`/`.expected.txt` diff.
-- CLI: `marain run <file.lat>` transpiles + executes; `marain build` emits the shim
-  project path. `cargo run -p marain-cli -- run …` during dev.
+- CLI: `marain run <file.lat>` transpiles + executes; `cargo run -p marain-cli -- run …`
+  during dev. f-string e2e scratch file was `/tmp/r17_e2e.lat`.

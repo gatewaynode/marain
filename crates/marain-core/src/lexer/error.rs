@@ -25,6 +25,11 @@ pub enum LexError {
     /// reserved syntax in v0.2 (PRD §4.12) and deferred to v0.3+; the
     /// dedicated variant lets the diagnostic point the user at `//`.
     BlockCommentsDeferred { span: Span },
+    /// An f-string hole `{…}` did not contain exactly one sigiled variable
+    /// (R17). Covers an empty hole (`{}`), a hole without a sigil (`{nomen}`),
+    /// an expression hole (`{^a plus ^b}`), and an unmatched `}`. Holes are
+    /// variable-refs-only in v0.3; full expressions are deferred.
+    InvalidFStringHole { span: Span },
     /// A `<` or `>` byte was encountered. Marain has no use for these
     /// characters (comparisons are `minor quam` / `maior quam` per PRD §4.4),
     /// so their most likely origin is a generics-syntax attempt like
@@ -45,6 +50,7 @@ impl LexError {
             | Self::SigilWithoutIdent { span, .. }
             | Self::InvalidInteger { span, .. }
             | Self::BlockCommentsDeferred { span }
+            | Self::InvalidFStringHole { span }
             | Self::GenericsLookalike { span, .. } => *span,
         }
     }
@@ -66,6 +72,10 @@ impl LexError {
             Self::InvalidInteger { text, .. } => format!("integer literal `{text}` is not valid"),
             Self::BlockCommentsDeferred { .. } => {
                 "block comments are reserved syntax; use // for a line comment (PRD §4.12)"
+                    .to_string()
+            }
+            Self::InvalidFStringHole { .. } => {
+                "f-string interpolation must be a single sigiled variable, e.g. `{^nomen}`"
                     .to_string()
             }
             Self::GenericsLookalike { ch, .. } => format!(
@@ -168,6 +178,20 @@ mod tests {
         assert!(
             msg.contains("PRD §4.12"),
             "message should cite PRD §4.12; got: {msg}",
+        );
+    }
+
+    #[test]
+    fn invalid_fstring_hole_message_shows_example() {
+        let e = LexError::InvalidFStringHole { span: s() };
+        let msg = e.message();
+        assert!(
+            msg.contains("sigiled variable"),
+            "message should explain holes are sigiled variables; got: {msg}",
+        );
+        assert!(
+            msg.contains("{^nomen}"),
+            "message should show a `{{^nomen}}` example; got: {msg}",
         );
     }
 }

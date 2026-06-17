@@ -222,6 +222,7 @@ pub struct Block {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Expr {
     StringLit(StringLit),
+    FString(FStringLit),
     IntegerLit(IntegerLit),
     BoolLit(BoolLit),
     VarRef(SigiledIdent),
@@ -235,6 +236,7 @@ impl Expr {
     pub fn span(&self) -> Span {
         match self {
             Self::StringLit(e) => e.span,
+            Self::FString(e) => e.span,
             Self::IntegerLit(e) => e.span,
             Self::BoolLit(e) => e.span,
             Self::VarRef(s) => s.span,
@@ -272,6 +274,25 @@ pub struct CallExpr {
 pub struct StringLit {
     pub value: String,
     pub span: Span,
+}
+
+/// An f-string literal `f"…{^x}…"` (R17) — sugar over `format!`. An ordered
+/// list of literal-text and variable-interpolation parts; emit lowers it to
+/// `format!("…{}…", x, …)`. Holes are variable-refs-only (a future round may
+/// admit full expressions); concatenation is the all-holes form `f"{^a}{^b}"`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FStringLit {
+    pub parts: Vec<FStringPart>,
+    pub span: Span,
+}
+
+/// One part of an [`FStringLit`]: verbatim text, or a single interpolated
+/// variable. Mirrors [`crate::token::FStringSeg`] but carries a resolved
+/// [`SigiledIdent`] so emit reuses the ordinary variable-reference path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FStringPart {
+    Literal(String),
+    Interp(SigiledIdent),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

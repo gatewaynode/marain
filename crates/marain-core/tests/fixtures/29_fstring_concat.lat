@@ -1,0 +1,3 @@
+sit ^a est "foo".
+sit ^b est "bar".
+dic f"{^a}{^b}".

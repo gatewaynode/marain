@@ -24,6 +24,7 @@ Design proceeds in eight numbered rounds. Each round closes in conversation, the
 | 13 | §15 Function Declarations + Calls | **Closed** |
 | 14+15 | §16 Loops + Ranges + `nihil` | **Closed** |
 | 16 | §17 Reassignment (`fit`) | **Closed** |
+| 17 | §18 f-strings (interpolation + concatenation) | **Closed** |
 
 §11 collects forward hooks that anticipate Stage 2 and other post-v0.1 work; it accretes across rounds.
 
@@ -1630,7 +1631,8 @@ modules: `AssignStmt` flows ast → parser/emit, same as `LetStmt`).
 No production file crossed the 500 target — but `emit.rs` landed *exactly* at 500.
 The next emit-arm addition must either split `emit.rs` (e.g. `emit/{stmt,expr}.rs`)
 or carry a module-doc justification per the pressure-release rule. Flagged as the
-R16-close watch-out.
+R16-close watch-out. **Resolved in R17** (§18.6): the f-string emit arm triggered the
+split — expression emitters moved to `emit/expr.rs`, `emit.rs` back to 436 LOC.
 
 ### 17.8 Forward hooks
 
@@ -1639,3 +1641,84 @@ increment stays explicit (`@x fit @x plus 1.`); revisit only with a PRD amendmen
 Field/index targets activate when method-call / index syntax lands. Cross-statement
 mutability tracking (catching `sit ^x` declared, `@x` reassigned) is a
 name-resolution-era concern.
+
+## 18. f-strings (interpolation + concatenation) — R17
+
+Ships `f"…{^x}…"` (PRD §4.6 / §4.7) as sugar over `format!`, resolving TODO Task 1
+(no string composition existed: `plus` is arithmetic-only, no concat operator, no
+interpolation). The entire literal — including each `{…}` hole — is resolved in one
+lexer pass and lowered to a `format!` call. In-spec activation of a deferred feature;
+no PRD amendment.
+
+### 18.1 Pipeline
+
+`f"salve {^nomen}!"` → lexer `scan_fstring` → `TokenKind::FStringLit([Literal("salve "),
+Interp{^nomen}, Literal("!")])` → parser pure-lift → `Expr::FString(FStringLit{parts})`
+→ emit → `format!("salve {}!", nomen)`. Concatenation is the all-holes form:
+`f"{^a}{^b}"` → `format!("{}{}", a, b)`.
+
+### 18.2 Decisions
+
+_Full rationale: [`tasks/decisions/R17_fstrings.md`](../tasks/decisions/R17_fstrings.md). Summary list below._
+
+- **A f-strings are the only composition mechanism.** No concat operator/keyword; PRD §4.7 says multi-value cases are handled by f-strings. Owner-confirmed.
+- **B Holes are variable-refs-only.** `{^name}` / `{@name}` only (optional spaces); empty / no-sigil / expression holes and format specs are `InvalidFStringHole`. Owner-locked. Makes the var-only path *cheaper* than full expressions (reuses `scan_sigiled_ident`), not more expensive.
+- **C One-pass lexer resolution.** A hole is a slice of the same file, so scanning it inline via `scan_sigiled_ident` gives a correct span + `FileId` for free — no parser sub-lexing, no remapping, no lexer mode-state. Internal `{`/`}` never reach the main dispatch, so they don't perturb indent/bracket state.
+- **D Prefix is `f"` (no space).** Unambiguous: variables carry sigils and calls need `(`, so `f"` is never anything else. One-line dispatch guard before the ident arm.
+- **E Emit as `format!`; split `emit.rs`.** Literal parts double `{`/`}`; holes contribute `{}` + a trailing arg. Triggered the §17.7 emit-500 split.
+
+### 18.3 New shapes
+
+```rust
+// token.rs
+pub enum FStringSeg { Literal(String), Interp { sigil: Sigil, name: String, span: Span } }
+TokenKind::FStringLit(Vec<FStringSeg>)            // lexer output, holes pre-resolved
+
+// ast.rs
+pub enum FStringPart { Literal(String), Interp(SigiledIdent) }
+pub struct FStringLit { pub parts: Vec<FStringPart>, pub span: Span }
+Expr::FString(FStringLit)
+```
+
+Carry-over α (inflection slot) untouched: `Interp` resolves to a `SigiledIdent`, which
+already carries the slot. Future widening of `Interp` from `SigiledIdent` to `Expr`
+admits expression holes without reshaping the token/AST boundary.
+
+### 18.4 Test coverage
+
+- **`lexer/strings.rs`** — +16: `scan_fstring` mechanics (literal, single/adjacent/mutable holes, `{{`/`}}`, space-padding, escapes, hole span) and errors (empty, no-sigil, expression, unmatched `}`, unterminated).
+- **`lexer/mod_tests.rs`** — +4: full-pipeline prefix dispatch, `f "x"` is ident+string, `functio` unaffected, empty-hole lex error; asserts internal braces emit no `LBrace`/`RBrace`.
+- **`parser/mod_tests.rs`** — +3: interpolation parts, no-hole single literal, concat in macro-arg position.
+- **`emit_tests.rs`** — +6: interpolation/concat lowering, f-string in `let`, no-hole no-args, doubled literal braces, raw-ident escape in a hole.
+- **`lexer/error.rs`** — +1: `InvalidFStringHole` message shows the `{^nomen}` example.
+- **`ast_tests.rs`** — +1: `Expr::FString` span dispatch.
+- **Goldens** — 2 emit (`28_fstring_interpolation`, `29_fstring_concat`) + 2 error (`errors/18_fstring_empty_hole`, `errors/19_fstring_expression_hole`).
+- **Manual e2e** — interpolation + concat + integer interpolation run through `marain run` print `Salve, Munde!` / `Concat: SalveMunde` / `Numerus est 42.`.
+
+**Test count delta: +31.** Workspace total at R17 close: **492** (was 461).
+`cargo fmt --all`, `cargo clippy --all-targets -D warnings`, `cargo test --all` clean.
+
+### 18.5 Sentrux signal at R17 close
+
+Baseline `quality_signal` **7057**; post-R17 **7033** (`signal_delta` −24, *improved* —
+lower is better in this signal's polarity). `coupling_change` [0.0, 0.0],
+`cycles_change` [0, 0], 0 violations, "Quality stable or improved".
+
+### 18.6 File-size status / pressure-release
+
+`emit.rs` split into `emit.rs` (436, statements + escapers + `EmitError`) + `emit/expr.rs`
+(129, expression emitters incl. `emit_fstring`); the child reaches the private escapers
+via `super::`. This discharges the R16 §17.7 watch-out. The same pressure moved
+`lexer/mod.rs`'s driver tests to a sibling `lexer/mod_tests.rs` (the split its own
+doc-comment had pre-authorized): `mod.rs` 264 ✓, `mod_tests.rs` 553 (justified test
+file). `lexer/strings.rs` 431 ✓, `token.rs` 177 ✓, `ast.rs` 417 ✓,
+`parser/expressions.rs` 307 ✓.
+
+### 18.7 Forward hooks
+
+Expression holes (`{^a plus ^b}`) and Rust format specs (`{x:>5}`) are deferred:
+activation widens `FStringPart::Interp` from `SigiledIdent` to `Expr` and gives the
+lexer brace-balanced sub-lexing (or a parser-side hole parse). `dic f"…"` currently
+double-wraps (`println!("{}", format!(…))`) — correct; a `dic`-special-case that emits
+`println!("…{}…", …)` directly is a future nicety. Triple-quoted strings (`"""…"""`)
+remain a separate deferred item (ROADMAP §4).

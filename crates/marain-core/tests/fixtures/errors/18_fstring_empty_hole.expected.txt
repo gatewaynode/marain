@@ -1,0 +1,1 @@
+18_fstring_empty_hole.lat:1:7: error: f-string interpolation must be a single sigiled variable, e.g. `{^nomen}`

@@ -827,3 +827,48 @@ fn fit_reassign_unescapable_target_errors() {
     let err = parse_and_emit_err("sit @self est 0.\n@self fit 1.\n");
     assert!(matches!(err, EmitError::UnescapableRustKeyword { .. }));
 }
+
+// --- R17: f-strings ---
+
+#[test]
+fn fstring_interpolation_lowers_to_format() {
+    let out = parse_and_emit("sit ^nomen est \"Munde\".\ndic f\"Salve, {^nomen}!\".\n");
+    assert!(
+        out.contains("println!(\"{}\", format!(\"Salve, {}!\", nomen));"),
+        "got: {out}"
+    );
+}
+
+#[test]
+fn fstring_concatenation_lowers_to_positional_args() {
+    // `f"{^a}{^b}"` IS the concatenation idiom — no separate operator.
+    let out = parse_and_emit("sit ^a est \"x\".\nsit ^b est \"y\".\ndic f\"{^a}{^b}\".\n");
+    assert!(out.contains("format!(\"{}{}\", a, b)"), "got: {out}");
+}
+
+#[test]
+fn fstring_in_let_binds_a_string() {
+    let out = parse_and_emit("sit ^x est \"a\".\nsit ^s est f\"hi {^x}\".\n");
+    assert!(out.contains("let s = format!(\"hi {}\", x);"), "got: {out}");
+}
+
+#[test]
+fn fstring_with_no_holes_has_no_args() {
+    let out = parse_and_emit("dic f\"plain\".\n");
+    assert!(out.contains("format!(\"plain\")"), "got: {out}");
+}
+
+#[test]
+fn fstring_doubles_literal_braces_for_format() {
+    // `{{`/`}}` decode to literal braces in source, then re-double for `format!`
+    // so the emitted Rust prints a single `{x}`.
+    let out = parse_and_emit("dic f\"{{x}}\".\n");
+    assert!(out.contains("format!(\"{{x}}\")"), "got: {out}");
+}
+
+#[test]
+fn fstring_interp_variable_uses_raw_identifier_escape() {
+    // A hole referencing a variable whose name is a Rust keyword still escapes.
+    let out = parse_and_emit("sit ^if est \"z\".\ndic f\"{^if}\".\n");
+    assert!(out.contains("format!(\"{}\", r#if)"), "got: {out}");
+}

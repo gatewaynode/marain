@@ -15,12 +15,16 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::ast::{
-    AssignStmt, Block, CallExpr, CallStmt, ElseBranch, Expr, ForStmt, FunctionStmt, IfStmt,
-    LetStmt, LoopStmt, MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
+    AssignStmt, Block, CallStmt, ElseBranch, ForStmt, FunctionStmt, IfStmt, LetStmt, LoopStmt,
+    MacroCallStmt, Module, Param, ReturnStmt, Stmt, TypeRef, WhileStmt,
 };
 use crate::error::Diagnostic;
 use crate::span::Span;
 use crate::token::Sigil;
+
+mod expr;
+
+use expr::{emit_call, emit_expr};
 
 /// Emit a Stage 1 module as a complete Rust source string.
 ///
@@ -288,77 +292,9 @@ enum MacroShape {
     Brackets,
 }
 
-fn emit_expr(out: &mut String, expr: &Expr) -> Result<(), EmitError> {
-    match expr {
-        Expr::StringLit(s) => {
-            out.push('"');
-            out.push_str(&escape_string_for_rust(&s.value));
-            out.push('"');
-        }
-        Expr::IntegerLit(i) => {
-            // i64 suffix forces type to match the lexer's parsed representation
-            // and prevents `let x = 5_000_000_000;` defaulting to i32 (overflow).
-            let _ = write!(out, "{}i64", i.value);
-        }
-        Expr::BoolLit(b) => {
-            out.push_str(if b.value { "true" } else { "false" });
-        }
-        Expr::VarRef(v) => {
-            let escaped = escape_ident_for_rust(&v.name, v.span)?;
-            out.push_str(&escaped);
-        }
-        Expr::BinOp(b) => {
-            // Wrap every binary op in parens; the parser already encodes correct
-            // precedence in the tree shape, paren-everywhere makes emission
-            // bulletproof against precedence drift in the Rust target.
-            out.push('(');
-            emit_expr(out, &b.lhs)?;
-            out.push(' ');
-            out.push_str(b.op.as_rust());
-            out.push(' ');
-            emit_expr(out, &b.rhs)?;
-            out.push(')');
-        }
-        Expr::UnaryOp(u) => {
-            out.push('(');
-            out.push_str(u.op.as_rust());
-            emit_expr(out, &u.operand)?;
-            out.push(')');
-        }
-        Expr::Call(c) => emit_call(out, c)?,
-        Expr::Range(r) => {
-            // No paren-wrap (ranges aren't BinOps and don't share the
-            // paren-everywhere rule); operands carry their own paren-wrap via
-            // emit_expr if they're BinOp/UnaryOp shapes.
-            if let Some(start) = &r.start {
-                emit_expr(out, start)?;
-            }
-            out.push_str(if r.inclusive { "..=" } else { ".." });
-            if let Some(end) = &r.end {
-                emit_expr(out, end)?;
-            }
-        }
-    }
-    Ok(())
-}
-
 fn emit_call_stmt(out: &mut String, c: &CallStmt) -> Result<(), EmitError> {
     emit_call(out, &c.call)?;
     out.push(';');
-    Ok(())
-}
-
-fn emit_call(out: &mut String, c: &CallExpr) -> Result<(), EmitError> {
-    let name = escape_ident_for_rust(&c.callee.name, c.callee.span)?;
-    out.push_str(&name);
-    out.push('(');
-    for (i, arg) in c.args.iter().enumerate() {
-        if i > 0 {
-            out.push_str(", ");
-        }
-        emit_expr(out, arg)?;
-    }
-    out.push(')');
     Ok(())
 }
 

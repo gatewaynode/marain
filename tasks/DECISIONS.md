@@ -17,6 +17,7 @@ Mechanically: a future-Claude reading `ARCHITECTURE.md` learns *what* was decide
 
 | Round | Title | Closed | Archive |
 | ----- | ----- | ------ | ------- |
+| R17 | f-strings (interpolation + concatenation) | 2026-06-17 | [R17_fstrings.md](decisions/R17_fstrings.md) |
 | R16 | Reassignment (`fit`) | 2026-06-16 | [R16_fit_reassignment.md](decisions/R16_fit_reassignment.md) |
 | R14+R15 | `pro` loops + range tokens + `nihil` | 2026-05-31 | [R14_15_pro_ranges_nihil.md](decisions/R14_15_pro_ranges_nihil.md) |
 | R13 | `functio` declarations + `redde` returns + function calls | 2026-05-30 | [R13_functio_calls.md](decisions/R13_functio_calls.md) |

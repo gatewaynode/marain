@@ -20,13 +20,36 @@ impl Sigil {
     }
 }
 
+/// One segment of an [`TokenKind::FStringLit`]. The lexer emits an ordered
+/// list alternating literal text with variable interpolations; `{{`/`}}` are
+/// decoded to literal braces and folded into the adjacent `Literal`.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum FStringSeg {
+    /// Verbatim text between holes (escapes already decoded).
+    Literal(String),
+    /// A `{^name}` / `{@name}` hole. Span covers the sigiled variable in source.
+    Interp {
+        sigil: Sigil,
+        name: String,
+        span: Span,
+    },
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum TokenKind {
     // Identifiers and literals
     PlainIdent(String),
-    SigiledIdent { sigil: Sigil, name: String },
+    SigiledIdent {
+        sigil: Sigil,
+        name: String,
+    },
     Keyword(Keyword),
     StringLit(String),
+    /// An f-string literal `f"…{^x}…"`, pre-split by the lexer into literal
+    /// text and variable-interpolation segments (R17). Holes are
+    /// variable-refs-only: each [`FStringSeg::Interp`] is a single sigiled
+    /// variable, resolved in the lexer via `scan_sigiled_ident`.
+    FStringLit(Vec<FStringSeg>),
     IntegerLit(i64),
 
     // Punctuation
@@ -64,6 +87,7 @@ impl fmt::Display for TokenKind {
             }
             Self::Keyword(k) => write!(f, "keyword `{}`", k.as_str()),
             Self::StringLit(_) => f.write_str("string literal"),
+            Self::FStringLit(_) => f.write_str("f-string literal"),
             Self::IntegerLit(_) => f.write_str("integer literal"),
             Self::Period => f.write_str("`.`"),
             Self::DotDot => f.write_str("`..`"),

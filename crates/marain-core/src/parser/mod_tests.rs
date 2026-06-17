@@ -1477,3 +1477,58 @@ fn sigiled_target_with_est_verb_is_error() {
         other => panic!("expected UnexpectedToken, got {other:?}"),
     }
 }
+
+// --- R17: f-strings ---
+
+/// Pull the f-string parts out of `sit ^s est <fstring>.`.
+fn fstring_parts_of_let(text: &str) -> Vec<crate::ast::FStringPart> {
+    let m = parse_ok(text);
+    match &m.items[0] {
+        Stmt::Let(l) => match &l.value {
+            Expr::FString(f) => f.parts.clone(),
+            other => panic!("expected FString value, got {other:?}"),
+        },
+        other => panic!("expected Let, got {other:?}"),
+    }
+}
+
+#[test]
+fn fstring_interpolation_parses_to_parts() {
+    use crate::ast::FStringPart;
+    let parts = fstring_parts_of_let("sit ^s est f\"salve {^nomen}\".\n");
+    assert_eq!(parts.len(), 2);
+    assert!(matches!(&parts[0], FStringPart::Literal(t) if t == "salve "));
+    match &parts[1] {
+        FStringPart::Interp(v) => {
+            assert_eq!(v.sigil, Sigil::Immutable);
+            assert_eq!(v.name, "nomen");
+        }
+        other => panic!("expected Interp, got {other:?}"),
+    }
+}
+
+#[test]
+fn fstring_with_no_holes_parses_to_one_literal() {
+    use crate::ast::FStringPart;
+    let parts = fstring_parts_of_let("sit ^s est f\"plain\".\n");
+    assert_eq!(parts.len(), 1);
+    assert!(matches!(&parts[0], FStringPart::Literal(t) if t == "plain"));
+}
+
+#[test]
+fn fstring_concatenation_parses_in_macro_arg_position() {
+    use crate::ast::FStringPart;
+    // `dic f"{^a}{^b}".` — f-string as the argument to a no-punct macro.
+    let m = parse_ok("dic f\"{^a}{^b}\".\n");
+    match &m.items[0] {
+        Stmt::MacroCall(c) => match &c.arg {
+            Expr::FString(f) => {
+                assert_eq!(f.parts.len(), 2);
+                assert!(matches!(&f.parts[0], FStringPart::Interp(v) if v.name == "a"));
+                assert!(matches!(&f.parts[1], FStringPart::Interp(v) if v.name == "b"));
+            }
+            other => panic!("expected FString arg, got {other:?}"),
+        },
+        other => panic!("expected MacroCall, got {other:?}"),
+    }
+}

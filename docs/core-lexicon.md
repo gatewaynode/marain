@@ -275,5 +275,10 @@ silently default to `i32` and overflow.
 ## String literals
 
 Single-quoted strings `"..."` with escapes `\"`, `\\`, `\n`, `\t`, `\r`, `\0`.
-Triple-quoted strings (`"""…"""`) and f-strings (`f"salve {nomen}"`) are
-PRD-promised (§4.6) but deferred past v0.1.
+
+f-strings (`f"salve {^nomen}"`) shipped in R17 (2026-06-17): sugar over `format!`,
+the mechanism for both interpolation and concatenation (`f"{^a}{^b}"`). Holes are
+variable-refs-only (`{^x}` / `{@x}`); `{{`/`}}` are literal braces. Full-expression
+holes and Rust format specs (`{x:>5}`) are deferred. See ARCHITECTURE §18.
+
+Triple-quoted strings (`"""…"""`) remain PRD-promised (§4.6) but deferred past v0.1.

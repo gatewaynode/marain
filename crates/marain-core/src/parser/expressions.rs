@@ -11,11 +11,11 @@
 //! recursion. The cascade mirrors PRD §4.4's Rust-inherited table.
 
 use crate::ast::{
-    BinOp, BinOpExpr, BoolLit, CallExpr, Expr, Ident, IntegerLit, RangeExpr, SigiledIdent,
-    StringLit, UnaryOp, UnaryOpExpr,
+    BinOp, BinOpExpr, BoolLit, CallExpr, Expr, FStringLit, FStringPart, Ident, IntegerLit,
+    RangeExpr, SigiledIdent, StringLit, UnaryOp, UnaryOpExpr,
 };
 use crate::lexer::keywords::Keyword;
-use crate::token::TokenKind;
+use crate::token::{FStringSeg, TokenKind};
 
 use super::Parser;
 use super::error::ParseError;
@@ -212,6 +212,21 @@ fn parse_primary(p: &mut Parser) -> Result<Expr, ParseError> {
         TokenKind::StringLit(value) => {
             p.advance();
             Ok(Expr::StringLit(StringLit { value, span }))
+        }
+        TokenKind::FStringLit(segs) => {
+            // Pure lift: the lexer already resolved each hole to a sigiled
+            // variable (R17), so this just maps token segments onto AST parts.
+            p.advance();
+            let parts = segs
+                .into_iter()
+                .map(|seg| match seg {
+                    FStringSeg::Literal(text) => FStringPart::Literal(text),
+                    FStringSeg::Interp { sigil, name, span } => {
+                        FStringPart::Interp(SigiledIdent::new(sigil, name, span))
+                    }
+                })
+                .collect();
+            Ok(Expr::FString(FStringLit { parts, span }))
         }
         TokenKind::IntegerLit(value) => {
             p.advance();

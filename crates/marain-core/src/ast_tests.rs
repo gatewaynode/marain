@@ -359,3 +359,19 @@ fn assign_stmt_span_dispatches_through_stmt() {
     });
     assert_eq!(a.span(), sp(0, 9));
 }
+
+#[test]
+fn fstring_span_dispatches_through_expr() {
+    let f = Expr::FString(FStringLit {
+        parts: vec![
+            FStringPart::Literal("salve ".to_string()),
+            FStringPart::Interp(SigiledIdent::new(
+                Sigil::Immutable,
+                "nomen".to_string(),
+                sp(8, 14),
+            )),
+        ],
+        span: sp(0, 16),
+    });
+    assert_eq!(f.span(), sp(0, 16));
+}
